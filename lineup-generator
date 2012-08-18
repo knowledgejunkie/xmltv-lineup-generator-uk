@@ -1,0 +1,3493 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use utf8;
+
+use XMLTV;
+
+use XMLTV::Get_nice qw(get_nice);
+$XMLTV::Get_nice::ua->parse_head(0);
+$XMLTV::Get_nice::FailOnError = 0;
+my $MAX_RETRY = 5; # max retries for XMLTV::Get_nice
+
+use XMLTV::Supplement qw/GetSupplement SetSupplementRoot/;
+
+use Carp qw/croak/;
+use DateTime;
+use DateTime::TimeZone;
+use Encode qw(decode_utf8 encode_utf8);
+use Getopt::Long;
+use HTML::Entities;
+use HTML::TreeBuilder;
+use IO::File;
+use List::Util qw(max);
+
+use LWP::UserAgent;
+my $ua = LWP::UserAgent->new;
+$ua->agent("xmltv/$XMLTV::VERSION");
+$ua->env_proxy;
+
+use POSIX qw(strftime);
+
+use XML::Compile::Schema;
+use XML::LibXML;
+
+#***************************************************************************
+#                              XMLTV variables                             *
+#***************************************************************************
+
+my $XMLTV_SUPP_ROOT = 'http://supplement.xmltv.org/tv_grab_uk_rt/';
+my $RT_CHANNELS_URL = 'http://xmltv.radiotimes.com/xmltv/channels.dat';
+
+#***************************************************************************
+#                           Postcode/region mappings                       *
+#***************************************************************************
+
+# Wales, Scotland and NI regions configured by country, not postcode
+my %bbc_one_postcodes = (
+    'east-east'     => 'CB3,CB9,CB11,CM0,CM7,CM77,CM8,CM9,CO1,CO10,CO11,CO12,CO13,CO16,CO2,CO3,CO4,CO5,CO6,CO7,CO8,CO9,IP1,IP10,IP11,IP12,IP13,IP14,IP15,IP16,IP17,IP18,IP19,IP2,IP20,IP21,IP22,IP23,IP24,IP25,IP26,IP27,IP28,IP29,IP3,IP30,IP31,IP32,IP33,IP4,IP5,IP6,IP7,IP8,IP9,NR1,NR10,NR11,NR12,NR13,NR14,NR15,NR16,NR17,NR18,NR19,NR2,NR20,NR24,NR26,NR27,NR28,NR29,NR3,NR30,NR31,NR32,NR33,NR34,NR35,NR4,NR5,NR6,NR7,NR8,NR9,PE35,PE37,SS5,SS6',
+    'east-west'     => 'AL4,AL5,AL6,AL7,AL8,CB1,CB10,CB2,CB4,CB5,CB6,CB7,CB8,CM21,CM22,HP1,HP23,HP4,HP5,LU1,LU2,LU3,LU4,LU5,LU6,LU7,MK1,MK10,MK11,MK12,MK13,MK14,MK15,MK16,MK17,MK19,MK3,MK4,MK40,MK41,MK42,MK43,MK44,MK45,MK46,MK5,MK6,MK7,MK8,MK9,NN1,NN10,NN11,NN12,NN14,NN15,NN16,NN18,NN2,NN29,NN3,NN4,NN5,NN7,NN8,NN9,PE1,PE13,PE14,PE15,PE16,PE19,PE2,PE26,PE29,PE3,PE38,PE4,PE5,PE6,PE7,PE8,SG1,SG14,SG15,SG16,SG17,SG18,SG19,SG2,SG3,SG4,SG5,SG6,SG7,SG8',
+    'east-midlands' => 'CV1,CV12,CV2,CV4,CV6,DE4,DE45,DE56,DE73,DE74,LE11,LE12,LE13,LE14,LE15,LE16,LE4,LE6,LE7,NG1,NG11,NG12,NG13,NG14,NG15,NG2,NG24,NG25,NG3,NG31,NG32,NG33,NG4,NG5,NN17,NN6,PE10,PE11,PE9',
+    'west-midlands' => 'B1,B10,B11,B13,B14,B15,B16,B17,B18,B19,B2,B20,B21,B23,B24,B25,B26,B27,B28,B29,B3,B30,B31,B32,B33,B34,B35,B36,B37,B38,B4,B40,B42,B43,B44,B45,B46,B47,B48,B49,B5,B50,B6,B60,B61,B62,B63,B64,B65,B66,B67,B68,B69,B7,B70,B71,B72,B73,B74,B75,B76,B77,B78,B79,B8,B80,B9,B90,B91,B92,B93,B94,B95,B96,B97,B98,CV10,CV11,CV13,CV21,CV22,CV23,CV3,CV31,CV32,CV33,CV34,CV35,CV37,CV47,CV5,CV7,CV8,CV9,DE1,DE11,DE12,DE13,DE14,DE15,DE21,DE22,DE23,DE24,DE3,DE5,DE6,DE65,DE7,DE72,DE75,DY1,DY10,DY11,DY12,DY13,DY14,DY2,DY3,DY4,DY5,DY6,DY7,DY8,DY9,GL1,GL10,GL11,GL17,GL18,GL19,GL2,GL20,GL3,GL4,GL50,GL51,GL52,GL54,GL55,HR1,HR2,HR3,HR4,HR5,HR6,HR7,HR8,HR9,LD7,LD8,LE1,LE10,LE17,LE18,LE19,LE2,LE3,LE5,LE65,LE67,LE8,LE9,LL11,LL14,LL20,NG10,NG16,NG6,NG7,NG8,NG9,NP25,NP7,ST1,ST10,ST11,ST12,ST14,ST15,ST16,ST17,ST18,ST19,ST2,ST20,ST21,ST3,ST4,ST5,ST6,ST9,SY1,SY10,SY11,SY12,SY13,SY19,SY2,SY22,SY3,SY4,SY5,SY6,SY7,SY8,TF1,TF10,TF11,TF12,TF13,TF2,TF3,TF4,TF5,TF6,TF7,TF8,TF9,WR1,WR10,WR11,WR12,WR13,WR14,WR15,WR2,WR3,WR4,WR5,WR6,WR7,WR8,WR9,WS1,WS10,WS11,WS12,WS13,WS14,WS15,WS2,WS3,WS4,WS5,WS6,WS7,WS8,WS9,WV1,WV10,WV11,WV12,WV13,WV14,WV15,WV16,WV2,WV3,WV4,WV5,WV6,WV7,WV8,WV9',
+    'london'        => 'AL1,AL10,AL2,AL3,AL9,BR1,BR2,BR3,BR4,BR5,BR6,BR7,BR8,CM1,CM11,CM12,CM13,CM14,CM15,CM16,CM17,CM18,CM19,CM2,CM20,CM23,CM24,CM3,CM4,CM5,CM6,CR0,CR2,CR3,CR4,CR5,CR6,CR7,CR8,CR9,DA1,DA10,DA11,DA12,DA13,DA14,DA15,DA16,DA17,DA18,DA2,DA3,DA4,DA5,DA6,DA7,DA8,DA9,E1,E10,E11,E12,E13,E14,E15,E16,E17,E18,E1W,E2,E3,E4,E5,E6,E7,E8,E9,EC1,EC1A,EC1M,EC1V,EC1Y,EC2,EC2A,EC2Y,EC3,EC3A,EC3R,EC4,EC4R,EN1,EN10,EN11,EN2,EN3,EN4,EN5,EN6,EN7,EN8,EN9,GU1,GU10,GU11,GU12,GU14,GU15,GU16,GU17,GU18,GU19,GU2,GU20,GU21,GU22,GU23,GU24,GU25,GU3,GU4,GU46,GU47,GU5,GU7,GU9,HA0,HA1,HA2,HA3,HA4,HA5,HA6,HA7,HA8,HA9,HP10,HP12,HP15,HP2,HP3,HP6,HP7,HP8,HP9,IG1,IG10,IG11,IG2,IG3,IG4,IG5,IG6,IG7,IG8,IG9,KT1,KT10,KT11,KT12,KT13,KT14,KT15,KT16,KT18,KT19,KT2,KT20,KT23,KT24,KT3,KT4,KT5,KT6,KT7,KT8,KT9,ME11,ME12,N1,N10,N11,N12,N13,N14,N15,N16,N17,N18,N19,N2,N20,N21,N22,N3,N4,N5,N6,N7,N8,N9,NW1,NW10,NW11,NW2,NW3,NW4,NW5,NW6,NW7,NW8,NW9,RG10,RG12,RG40,RG41,RG42,RG45,RH1,RH10,RH11,RH13,RH18,RH19,RH2,RH3,RH4,RH5,RH6,RH8,RH9,RM1,RM10,RM11,RM12,RM13,RM14,RM15,RM16,RM17,RM19,RM2,RM20,RM3,RM4,RM5,RM6,RM7,RM8,RM9,SE1,SE10,SE11,SE12,SE13,SE14,SE15,SE16,SE17,SE18,SE19,SE2,SE20,SE21,SE22,SE23,SE24,SE25,SE26,SE27,SE28,SE3,SE4,SE5,SE6,SE7,SE8,SE9,SG10,SG11,SG12,SG13,SG9,SL0,SL1,SL2,SL3,SL4,SL5,SL6,SL8,SL9,SM1,SM2,SM3,SM4,SM5,SM6,SM7,SS0,SS1,SS14,SS15,SS16,SS17,SS2,SS3,SS4,SS7,SS9,SW1,SW10,SW11,SW12,SW13,SW14,SW15,SW16,SW17,SW18,SW19,SW1A,SW1E,SW1P,SW1V,SW1W,SW1Y,SW2,SW20,SW3,SW4,SW5,SW6,SW7,SW8,SW9,TN13,TN14,TN15,TN16,TN7,TW1,TW10,TW12,TW13,TW14,TW15,TW16,TW17,TW18,TW19,TW20,TW3,TW4,TW5,TW7,TW8,TW9,UB1,UB10,UB2,UB3,UB4,UB5,UB6,UB7,UB8,UB9,W1,W10,W11,W12,W13,W14,W1A,W1G,W1J,W1S,W1T,W1W,W2,W3,W4,W5,W6,W7,W8,W9,WC1,WC1X,WC2,WC2B,WD17,WD18,WD19,WD23,WD24,WD25,WD3,WD4,WD5,WD6,WD7',
+    'north-east'    => 'BD14,BD23,CA1,CA10,CA11,CA12,CA16,CA17,CA18,CA19,CA2,CA20,CA21,CA22,CA23,CA24,CA25,CA27,CA3,CA4,CA5,CA6,CA7,CA8,CA9,DG1,DG11,DG12,DG14,DG16,DG7,DH1,DH2,DH3,DH4,DH5,DH6,DH7,DH8,DH9,DL1,DL10,DL11,DL12,DL13,DL14,DL15,DL16,DL17,DL2,DL3,DL4,DL5,DL6,DL7,DL8,DL9,HG1,HG2,HG4,LS16,LS27,NE1,NE10,NE11,NE12,NE13,NE15,NE16,NE17,NE18,NE19,NE2,NE20,NE21,NE22,NE23,NE24,NE25,NE26,NE27,NE28,NE29,NE3,NE30,NE31,NE32,NE33,NE34,NE35,NE36,NE37,NE38,NE39,NE4,NE40,NE41,NE42,NE43,NE44,NE45,NE46,NE47,NE49,NE5,NE6,NE61,NE62,NE63,NE64,NE65,NE66,NE67,NE68,NE7,NE70,NE71,NE8,NE9,NE99,S70,SR1,SR2,SR3,SR4,SR5,SR6,SR7,SR8,TD11,TD12,TD15,TD9,TS1,TS10,TS11,TS12,TS14,TS15,TS16,TS17,TS18,TS19,TS2,TS20,TS21,TS22,TS23,TS25,TS26,TS27,TS28,TS29,TS3,TS5,TS6,TS7,TS8,TS9,YO12,YO16,YO17,YO18,YO21,YO26,YO32,YO51,YO60,YO61,YO62,YO7',
+    'north-west'    => 'BB1,BB10,BB11,BB12,BB2,BB3,BB4,BB5,BB6,BB8,BB9,BL0,BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,CH1,CH2,CH3,CH41,CH42,CH43,CH44,CH45,CH46,CH49,CH62,CH63,CH66,CW1,CW10,CW11,CW12,CW2,CW3,CW4,CW5,CW6,CW7,CW8,CW9,FY1,FY2,FY3,FY4,FY5,FY6,FY8,L1,L10,L11,L12,L13,L14,L15,L16,L17,L18,L19,L20,L21,L22,L23,L24,L25,L26,L29,L3,L30,L31,L32,L33,L34,L35,L36,L37,L38,L39,L4,L40,L6,L7,L8,L9,LA1,LA10,LA11,LA12,LA13,LA14,LA15,LA16,LA17,LA18,LA19,LA2,LA20,LA21,LA22,LA23,LA3,LA5,LA6,LA7,LA8,LA9,LL13,LL19,M1,M12,M13,M14,M15,M16,M17,M18,M19,M2,M20,M21,M22,M23,M24,M25,M26,M27,M28,M29,M3,M30,M31,M32,M33,M34,M35,M38,M40,M41,M43,M44,M45,M46,M5,M50,M6,M60,M7,M8,M9,OL1,OL10,OL11,OL12,OL13,OL15,OL16,OL2,OL3,OL4,OL6,OL7,OL8,OL9,PR1,PR2,PR25,PR26,PR3,PR4,PR5,PR6,PR7,PR8,SK1,SK10,SK11,SK12,SK13,SK14,SK15,SK16,SK17,SK2,SK22,SK23,SK3,SK4,SK5,SK6,SK7,SK8,SK9,ST13,ST7,ST8,SY14,WA1,WA10,WA11,WA12,WA13,WA14,WA15,WA16,WA2,WA3,WA4,WA5,WA6,WA7,WA8,WA9,WN1,WN2,WN3,WN4,WN5,WN6,WN7,WN8,IM1,IM2,IM3,IM4,IM5,IM6,IM7,IM8,IM9',
+    'south'         => 'BH1,BH10,BH11,BH12,BH13,BH14,BH16,BH17,BH19,BH2,BH20,BH21,BH22,BH23,BH24,BH25,BH3,BH31,BH4,BH5,BH8,BH9,BN1,BN12,BN13,BN14,BN15,BN16,BN17,BN18,BN2,BN3,BN41,BN42,BN43,BN45,BN5,DT11,GU26,GU27,GU28,GU29,GU30,GU31,GU32,GU33,GU34,GU35,GU51,GU52,GU6,GU8,HP11,HP13,KT17,KT21,KT22,PO1,PO10,PO11,PO12,PO13,PO14,PO15,PO16,PO17,PO18,PO19,PO2,PO20,PO21,PO22,PO3,PO30,PO31,PO32,PO33,PO34,PO38,PO39,PO4,PO40,PO41,PO5,PO6,PO7,PO8,PO9,RG1,RG14,RG17,RG18,RG19,RG2,RG20,RG21,RG22,RG23,RG24,RG25,RG26,RG27,RG28,RG29,RG30,RG31,RG4,RG5,RG6,RG7,RH12,RH14,RH20,SL7,SN8,SN9,SO14,SO15,SO16,SO17,SO18,SO19,SO20,SO21,SO22,SO23,SO24,SO30,SO31,SO32,SO40,SO41,SO42,SO43,SO45,SO50,SO51,SO52,SO53,SP1,SP10,SP11,SP2,SP4,SP6,SP9,TW11,TW2',
+    'south-east'    => 'BN10,BN20,BN21,BN22,BN23,BN24,BN25,BN26,BN27,BN44,BN6,BN7,BN8,BN9,CT1,CT10,CT11,CT12,CT13,CT14,CT15,CT16,CT17,CT18,CT19,CT2,CT20,CT21,CT3,CT4,CT5,CT6,CT9,ME1,ME10,ME13,ME14,ME15,ME16,ME17,ME18,ME19,ME2,ME20,ME4,ME5,ME6,ME7,ME8,ME9,RH15,RH16,RH17,RH7,SS11,SS12,SS13,TN1,TN10,TN11,TN12,TN17,TN18,TN19,TN2,TN20,TN21,TN22,TN23,TN24,TN25,TN26,TN27,TN28,TN29,TN3,TN30,TN31,TN32,TN33,TN34,TN35,TN36,TN37,TN38,TN39,TN4,TN40,TN5,TN6,TN8,TN9',
+    'south-oxford'  => 'CV36,GL53,GL56,GL7,HP14,HP16,HP17,HP18,HP19,HP20,HP21,HP22,HP27,MK18,MK2,NN13,OX1,OX10,OX11,OX12,OX13,OX14,OX15,OX16,OX17,OX18,OX2,OX20,OX25,OX26,OX27,OX28,OX29,OX3,OX33,OX39,OX4,OX44,OX49,OX5,OX7,OX9,RG8,RG9,SN1,SN2,SN25,SN3,SN4,SN5,SN6,SN7',
+    'south-west'    => 'DT1,DT5,DT6,EX1,EX10,EX11,EX12,EX13,EX14,EX15,EX16,EX17,EX18,EX19,EX2,EX20,EX21,EX22,EX23,EX24,EX3,EX31,EX32,EX33,EX34,EX36,EX37,EX38,EX39,EX4,EX5,EX6,EX7,PL1,PL10,PL11,PL12,PL13,PL14,PL15,PL16,PL17,PL18,PL19,PL2,PL20,PL21,PL22,PL23,PL24,PL25,PL26,PL27,PL28,PL29,PL3,PL30,PL31,PL32,PL33,PL34,PL35,PL4,PL5,PL6,PL7,PL8,PL9,TA19,TA20,TA22,TA4,TQ1,TQ10,TQ11,TQ12,TQ13,TQ14,TQ2,TQ3,TQ4,TQ5,TQ7,TQ8,TQ9,TR1,TR10,TR11,TR12,TR13,TR14,TR15,TR16,TR19,TR2,TR26,TR27,TR3,TR4,TR5,TR6,TR8,TR9',
+    'south-west-ci' => 'JE1,JE2,JE3,JE4,GY1,GY2,GY3,GY4,GY5,GY6,GY7,GY8,GY9',
+    'west'          => 'BA1,BA10,BA11,BA12,BA13,BA14,BA15,BA16,BA2,BA20,BA21,BA22,BA3,BA4,BA5,BA6,BA7,BA8,BA9,BH18,BS1,BS10,BS11,BS13,BS14,BS15,BS16,BS2,BS20,BS21,BS22,BS24,BS25,BS26,BS27,BS28,BS29,BS3,BS31,BS32,BS34,BS35,BS36,BS37,BS39,BS4,BS40,BS41,BS49,BS5,BS6,BS7,BS8,BS9,BS99,CF46,DT10,DT2,DT8,DT9,EX35,GL12,GL13,GL14,GL15,GL16,GL5,GL6,GL8,GL9,NP16,NP20,NP26,NP4,NP44,SN10,SN11,SN12,SN13,SN14,SN15,SN16,SP3,SP5,SP7,SP8,TA1,TA10,TA11,TA12,TA13,TA14,TA15,TA16,TA17,TA18,TA2,TA21,TA3,TA6,TA7,TA8,TA9',
+    'yorkshire'     => 'BB18,DE55,DN1,DN10,DN11,DN12,DN14,DN17,DN18,DN22,DN3,DN4,DN5,DN6,DN7,DN8,DN9,HU15,LN7,NG17,NG18,NG21,NG22,OL14,BD1,BD10,BD11,BD12,BD13,BD15,BD16,BD17,BD18,BD19,BD2,BD20,BD21,BD22,BD24,BD3,BD4,BD5,BD6,BD7,BD8,BD9,HD1,HD2,HD3,HD4,HD5,HD6,HD7,HD8,HD9,HG3,HG5,HX1,HX2,HX3,HX4,HX5,HX6,HX7,LS1,LS10,LS11,LS12,LS13,LS14,LS15,LS17,LS18,LS19,LS2,LS20,LS21,LS22,LS23,LS24,LS25,LS26,LS28,LS29,LS3,LS4,LS5,LS6,LS7,LS8,LS9,S1,S10,S11,S12,S13,S14,S17,S18,S2,S20,S21,S25,S3,S32,S35,S36,S4,S40,S41,S42,S43,S44,S45,S5,S6,S60,S61,S62,S63,S64,S65,S66,S7,S71,S72,S73,S75,S8,S80,S81,S9,WF1,WF10,WF11,WF12,WF13,WF14,WF15,WF16,WF17,WF2,WF3,WF4,WF5,WF6,WF7,WF8,WF9,YO1,YO10,YO11,YO13,YO14,YO19,YO23,YO24,YO30,YO31,YO41,YO42,YO43,YO8',
+    'yorkslincs'    => 'DN15,DN16,DN19,DN20,DN21,DN32,DN33,DN34,DN36,DN37,DN38,DN39,DN40,HU1,HU10,HU11,HU12,HU13,HU14,HU16,HU17,HU20,HU3,HU4,HU5,HU6,HU7,HU8,HU9,LN1,LN10,LN11,LN13,LN2,LN3,LN4,LN5,LN6,LN8,LN9,NG19,NG20,NG23,NG34,NR21,NR22,NR23,NR25,PE12,PE20,PE21,PE22,PE23,PE24,PE25,PE27,PE28,PE30,PE31,PE32,PE33,PE34,PE36,S74,YO25',
+);
+
+# Wales and NI regions configured by country, not postcode
+my %itv_one_postcode = (
+    'anglia'          => 'CB1,CB2,CB3,CB4,CB5,CB6,CB7,CB8,CB9,CB10,CB11,CM0,CM7,CM77,CM8,CM9,CO1,CO10,CO11,CO12,CO13,CO16,CO2,CO3,CO4,CO5,CO6,CO7,CO8,CO9,IP1,IP10,IP11,IP12,IP13,IP14,IP15,IP16,IP17,IP18,IP19,IP2,IP20,IP21,IP22,IP23,IP24,IP25,IP26,IP27,IP28,IP29,IP3,IP30,IP31,IP32,IP33,IP4,IP5,IP6,IP7,IP8,IP9,NR1,NR10,NR11,NR12,NR13,NR14,NR15,NR16,NR17,NR18,NR19,NR2,NR20,NR24,NR26,NR27,NR28,NR29,NR3,NR30,NR31,NR32,NR33,NR34,NR35,NR4,NR5,NR6,NR7,NR8,NR9,PE37,SS5,SS6,AL4,AL5,AL6,AL7,AL8,CM21,CM22,HP1,HP23,HP4,HP5,LU1,LU2,LU3,LU4,LU5,LU6,LU7,MK1,MK10,MK11,MK12,MK13,MK14,MK15,MK16,MK17,MK19,MK3,MK4,MK40,MK41,MK42,MK43,MK44,MK45,MK46,MK5,MK6,MK7,MK8,MK9,NN1,NN10,NN11,NN12,NN14,NN15,NN16,NN18,NN2,NN29,NN3,NN4,NN5,NN7,NN8,NN9,PE1,PE13,PE14,PE15,PE16,PE19,PE2,PE26,PE29,PE3,PE35,PE38,PE4,PE5,PE6,PE7,PE8,SG1,SG14,SG15,SG16,SG17,SG18,SG19,SG2,SG3,SG4,SG5,SG6,SG7,SG8',
+    'border'          => 'CA1,CA10,CA11,CA12,CA13,CA14,CA16,CA17,CA18,CA19,CA2,CA20,CA21,CA22,CA23,CA24,CA25,CA26,CA27,CA28,CA3,CA4,CA5,CA6,CA7,CA8,CA9,DG1,DG10,DG11,DG12,DG14,DG16,DG2,DG3,DG4,DG5,DG6,DG7,DG9,LA10,LA21,LA22,LA23,LA8',
+    'central'         => 'CV1,CV12,CV2,CV4,CV6,DE4,DE45,DE73,DE74,LE11,LE12,LE13,LE14,LE15,LE16,LE4,LE6,LE7,NG1,NG11,NG12,NG13,NG14,NG15,NG2,NG24,NG25,NG3,NG31,NG32,NG33,NG4,NG5,NN17,NN6,PE10,PE11,PE9,B1,B10,B11,B13,B14,B15,B16,B17,B18,B19,B2,B20,B21,B23,B24,B25,B26,B27,B28,B29,B3,B30,B31,B32,B33,B34,B35,B36,B37,B38,B4,B40,B42,B43,B44,B45,B46,B47,B48,B49,B5,B50,B6,B60,B61,B62,B63,B64,B65,B66,B67,B68,B69,B7,B70,B71,B72,B73,B74,B75,B76,B77,B78,B79,B8,B80,B9,B90,B91,B92,B93,B94,B95,B96,B97,B98,CV10,CV11,CV13,CV21,CV22,CV23,CV3,CV31,CV32,CV33,CV34,CV35,CV37,CV47,CV5,CV7,CV8,CV9,DE1,DE11,DE12,DE13,DE14,DE15,DE21,DE22,DE23,DE24,DE3,DE5,DE56,DE6,DE65,DE7,DE72,DE75,DY1,DY10,DY11,DY12,DY13,DY14,DY2,DY3,DY4,DY5,DY6,DY7,DY8,DY9,GL1,GL10,GL11,GL17,GL18,GL19,GL2,GL20,GL3,GL4,GL50,GL51,GL52,GL54,GL55,HR1,HR2,HR3,HR4,HR5,HR6,HR7,HR8,HR9,LD7,LD8,LE1,LE10,LE17,LE18,LE19,LE2,LE3,LE5,LE65,LE67,LE8,LE9,LL11,LL14,LL20,NG10,NG16,NG6,NG7,NG8,NG9,NP25,NP7,ST1,ST10,ST11,ST12,ST14,ST15,ST16,ST17,ST18,ST19,ST2,ST20,ST21,ST3,ST4,ST5,ST6,ST9,SY1,SY10,SY11,SY12,SY13,SY19,SY2,SY22,SY3,SY4,SY5,SY6,SY7,SY8,TF1,TF10,TF11,TF12,TF13,TF2,TF3,TF4,TF5,TF6,TF7,TF8,TF9,WR1,WR10,WR11,WR12,WR13,WR14,WR15,WR2,WR3,WR4,WR5,WR6,WR7,WR8,WR9,WS1,WS10,WS11,WS12,WS13,WS14,WS15,WS2,WS3,WS4,WS5,WS6,WS7,WS8,WS9,WV1,WV10,WV11,WV12,WV13,WV14,WV15,WV16,WV2,WV3,WV4,WV5,WV6,WV7,WV8,WV9',
+    'channel'         => 'JE1,JE2,JE3,JE4,GY1,GY2,GY3,GY4,GY5,GY6,GY7,GY8,GY9',
+    'granada'         => 'BB1,BB10,BB11,BB12,BB2,BB3,BB4,BB5,BB6,BB8,BB9,BL0,BL1,BL2,BL3,BL4,BL5,BL6,BL7,BL8,CH1,CH2,CH3,CH41,CH42,CH43,CH44,CH45,CH46,CH49,CH62,CH63,CH66,CW1,CW10,CW11,CW12,CW2,CW3,CW4,CW5,CW6,CW7,CW8,CW9,FY1,FY2,FY3,FY4,FY5,FY6,FY8,L1,L10,L11,L12,L13,L14,L15,L16,L17,L18,L19,L20,L21,L22,L23,L24,L25,L26,L29,L3,L30,L31,L32,L33,L34,L35,L36,L37,L38,L39,L4,L40,L6,L7,L8,L9,LA1,LA11,LA12,LA13,LA14,LA15,LA16,LA17,LA18,LA19,LA2,LA20,LA3,LA5,LA6,LA7,LA9,LL13,LL19,M1,M12,M13,M14,M15,M16,M17,M18,M19,M2,M20,M21,M22,M23,M24,M25,M26,M27,M28,M29,M3,M30,M31,M32,M33,M34,M35,M38,M40,M41,M43,M44,M45,M46,M5,M50,M6,M60,M7,M8,M9,OL1,OL10,OL11,OL12,OL13,OL15,OL16,OL2,OL3,OL4,OL6,OL7,OL8,OL9,PR1,PR2,PR25,PR26,PR3,PR4,PR5,PR6,PR7,PR8,SK1,SK10,SK11,SK12,SK13,SK14,SK15,SK16,SK17,SK2,SK22,SK23,SK3,SK4,SK5,SK6,SK7,SK8,SK9,ST13,ST7,ST8,SY14,WA1,WA10,WA11,WA12,WA13,WA14,WA15,WA16,WA2,WA3,WA4,WA5,WA6,WA7,WA8,WA9,WN1,WN2,WN3,WN4,WN5,WN6,WN7,WN8,IM1,IM2,IM3,IM4,IM5,IM6,IM7,IM8,IM9',
+    'london'          => 'AL1,AL10,AL2,AL3,AL9,BR1,BR2,BR3,BR4,BR5,BR6,BR7,BR8,CM1,CM11,CM12,CM13,CM14,CM15,CM16,CM17,CM18,CM19,CM2,CM20,CM23,CM24,CM3,CM4,CM5,CM6,CR0,CR2,CR3,CR4,CR5,CR6,CR7,CR8,CR9,DA1,DA10,DA11,DA12,DA13,DA14,DA15,DA16,DA17,DA18,DA2,DA3,DA4,DA5,DA6,DA7,DA8,DA9,E1,E10,E11,E12,E13,E14,E15,E16,E17,E18,E1W,E2,E3,E4,E5,E6,E7,E8,E9,EC1,EC1A,EC1M,EC1V,EC1Y,EC2,EC2A,EC2Y,EC3,EC3A,EC3R,EC4,EC4R,EN1,EN10,EN11,EN2,EN3,EN4,EN5,EN6,EN7,EN8,EN9,GU1,GU10,GU11,GU12,GU14,GU15,GU16,GU17,GU18,GU19,GU2,GU20,GU21,GU22,GU23,GU24,GU25,GU3,GU4,GU46,GU47,GU5,GU7,GU9,HA0,HA1,HA2,HA3,HA4,HA5,HA6,HA7,HA8,HA9,HP10,HP12,HP15,HP2,HP3,HP6,HP7,HP8,HP9,IG1,IG10,IG11,IG2,IG3,IG4,IG5,IG6,IG7,IG8,IG9,KT1,KT10,KT11,KT12,KT13,KT14,KT15,KT16,KT18,KT19,KT2,KT20,KT23,KT24,KT3,KT4,KT5,KT6,KT7,KT8,KT9,ME11,ME12,N1,N10,N11,N12,N13,N14,N15,N16,N17,N18,N19,N2,N20,N21,N22,N3,N4,N5,N6,N7,N8,N9,NW1,NW10,NW11,NW2,NW3,NW4,NW5,NW6,NW7,NW8,NW9,RG10,RG12,RG40,RG41,RG42,RG45,RH1,RH10,RH11,RH13,RH18,RH19,RH2,RH3,RH4,RH5,RH6,RH8,RH9,RM1,RM10,RM11,RM12,RM13,RM14,RM15,RM16,RM17,RM19,RM2,RM20,RM3,RM4,RM5,RM6,RM7,RM8,RM9,SE1,SE10,SE11,SE12,SE13,SE14,SE15,SE16,SE17,SE18,SE19,SE2,SE20,SE21,SE22,SE23,SE24,SE25,SE26,SE27,SE28,SE3,SE4,SE5,SE6,SE7,SE8,SE9,SG10,SG11,SG12,SG13,SG9,SL0,SL1,SL2,SL3,SL4,SL5,SL6,SL8,SL9,SM1,SM2,SM3,SM4,SM5,SM6,SM7,SS0,SS1,SS14,SS15,SS16,SS17,SS2,SS3,SS4,SS7,SS9,SW1,SW10,SW11,SW12,SW13,SW14,SW15,SW16,SW17,SW18,SW19,SW1A,SW1E,SW1P,SW1V,SW1W,SW1Y,SW2,SW20,SW3,SW4,SW5,SW6,SW7,SW8,SW9,TN13,TN14,TN15,TN16,TN7,TW1,TW10,TW12,TW13,TW14,TW15,TW16,TW17,TW18,TW19,TW20,TW3,TW4,TW5,TW7,TW8,TW9,UB1,UB10,UB2,UB3,UB4,UB5,UB6,UB7,UB8,UB9,W1,W10,W11,W12,W13,W14,W1A,W1G,W1J,W1S,W1T,W1W,W2,W3,W4,W5,W6,W7,W8,W9,WC1,WC1X,WC2,WC2B,WD17,WD18,WD19,WD23,WD24,WD25,WD3,WD4,WD5,WD6,WD7',
+    'meridian'        => 'BN10,BN20,BN21,BN22,BN23,BN24,BN25,BN26,BN27,BN44,BN6,BN7,BN8,BN9,CT1,CT10,CT11,CT12,CT13,CT14,CT15,CT16,CT17,CT18,CT19,CT2,CT20,CT21,CT3,CT4,CT5,CT6,CT9,ME1,ME10,ME13,ME14,ME15,ME16,ME17,ME18,ME19,ME2,ME20,ME4,ME5,ME6,ME7,ME8,ME9,RH15,RH16,RH17,RH7,SS11,SS12,SS13,TN1,TN10,TN11,TN12,TN17,TN18,TN19,TN2,TN20,TN21,TN22,TN23,TN24,TN25,TN26,TN27,TN28,TN29,TN3,TN30,TN31,TN32,TN33,TN34,TN35,TN36,TN37,TN38,TN39,TN4,TN40,TN5,TN6,TN8,TN9,BH1,BH10,BH11,BH12,BH13,BH14,BH16,BH17,BH19,BH2,BH20,BH21,BH22,BH23,BH24,BH25,BH3,BH31,BH4,BH5,BH8,BH9,BN1,BN12,BN13,BN14,BN15,BN16,BN17,BN18,BN2,BN3,BN41,BN42,BN43,BN45,BN5,DT11,GU26,GU27,GU28,GU29,GU31,GU32,GU33,GU35,GU6,GU8,HP11,HP13,PO1,PO10,PO11,PO12,PO13,PO14,PO15,PO16,PO17,PO18,PO19,PO2,PO20,PO21,PO22,PO3,PO30,PO31,PO32,PO33,PO34,PO38,PO39,PO4,PO41,PO5,PO6,PO7,PO8,PO9,RH12,RH14,RH20,SO14,SO15,SO16,SO17,SO18,SO19,SO24,SO30,SO31,SO32,SO40,SO41,SO42,SO43,SO45,SO50,SO51,SO52,SO53,SP1,SP2,SP4,SP6,CV36,GL53,GL56,GL7,HP14,HP16,HP17,HP18,HP19,HP20,HP21,HP22,HP27,MK18,MK2,NN13,OX1,OX10,OX11,OX12,OX13,OX14,OX15,OX16,OX17,OX18,OX2,OX20,OX25,OX26,OX27,OX28,OX29,OX3,OX33,OX39,OX4,OX44,OX49,OX5,OX7,OX9,RG8,RG9,SN1,SN2,SN25,SN3,SN4,SN5,SN6,SN7,GU30,GU34,GU51,GU52,KT17,KT21,KT22,PO40,RG1,RG14,RG17,RG18,RG19,RG2,RG20,RG21,RG22,RG23,RG24,RG25,RG26,RG27,RG28,RG29,RG30,RG31,RG4,RG5,RG6,RG7,SL7,SN8,SN9,SO20,SO21,SO22,SO23,SP10,SP11,SP9,TW11,TW2',
+    'scottish-border' => 'EH43,EH45,TD1,TD10,TD13,TD14,TD2,TD3,TD4,TD5,TD6,TD7,TD8',
+    'tynetees'        => 'BD14,BD23,DL1,DL10,DL11,DL12,DL13,DL17,DL3,DL6,DL7,DL8,DL9,HG1,HG2,HG4,LS16,LS27,NE26,S70,TS1,TS10,TS14,TS15,TS16,TS17,TS18,TS19,TS2,TS20,TS21,TS22,TS23,TS25,TS26,TS28,TS3,TS5,TS6,TS7,TS8,TS9,YO12,YO16,YO17,YO18,YO21,YO26,YO32,YO51,YO60,YO61,YO62,YO7,DH1,DH2,DH3,DH4,DH5,DH6,DH7,DH8,DH9,DL14,DL15,DL16,DL2,DL4,DL5,NE1,NE10,NE11,NE12,NE13,NE15,NE16,NE17,NE18,NE19,NE2,NE20,NE21,NE22,NE23,NE24,NE25,NE27,NE28,NE29,NE3,NE30,NE31,NE32,NE33,NE34,NE35,NE36,NE37,NE38,NE39,NE4,NE40,NE41,NE42,NE43,NE44,NE45,NE46,NE47,NE49,NE5,NE6,NE61,NE62,NE63,NE64,NE65,NE66,NE67,NE68,NE7,NE70,NE71,NE8,NE9,NE99,SR1,SR2,SR3,SR4,SR5,SR6,SR7,SR8,TD11,TD12,TD15,TD9,TS11,TS12,TS27,TS29',
+    'west'            => 'BA1,BA10,BA11,BA12,BA13,BA14,BA15,BA16,BA2,BA20,BA21,BA22,BA3,BA4,BA5,BA6,BA7,BA8,BA9,BH18,BS1,BS10,BS11,BS13,BS14,BS15,BS16,BS2,BS20,BS21,BS22,BS24,BS25,BS26,BS27,BS28,BS29,BS3,BS31,BS32,BS34,BS35,BS36,BS37,BS39,BS4,BS40,BS41,BS49,BS5,BS6,BS7,BS8,BS9,BS99,CF46,DT10,DT2,DT8,DT9,EX35,GL12,GL13,GL14,GL15,GL16,GL5,GL6,GL8,GL9,NP16,NP20,NP26,NP4,NP44,SN10,SN11,SN12,SN13,SN14,SN15,SN16,SP3,SP5,SP7,SP8,TA1,TA10,TA11,TA12,TA13,TA14,TA15,TA16,TA17,TA18,TA2,TA21,TA3,TA6,TA7,TA8,TA9',
+    'westcountry'     => 'DT1,DT5,DT6,EX1,EX10,EX11,EX12,EX13,EX14,EX15,EX16,EX17,EX18,EX19,EX2,EX20,EX21,EX22,EX23,EX24,EX3,EX31,EX32,EX33,EX34,EX36,EX37,EX38,EX39,EX4,EX5,EX6,EX7,PL1,PL10,PL11,PL12,PL13,PL14,PL15,PL16,PL17,PL18,PL19,PL2,PL20,PL21,PL22,PL23,PL24,PL25,PL26,PL27,PL28,PL29,PL3,PL30,PL31,PL32,PL33,PL34,PL35,PL4,PL5,PL6,PL7,PL8,PL9,TA19,TA20,TA22,TA4,TQ1,TQ10,TQ11,TQ12,TQ13,TQ14,TQ2,TQ3,TQ4,TQ5,TQ7,TQ8,TQ9,TR1,TR10,TR11,TR12,TR13,TR14,TR15,TR16,TR19,TR2,TR26,TR27,TR3,TR4,TR5,TR6,TR8,TR9',
+    'yorkshire'       => 'DN15,DN16,DN19,DN20,DN21,DN32,DN33,DN34,DN36,DN37,DN38,DN39,DN40,HU1,HU10,HU11,HU12,HU13,HU14,HU16,HU17,HU20,HU3,HU4,HU5,HU6,HU7,HU8,HU9,LN1,LN10,LN11,LN13,LN2,LN3,LN4,LN5,LN6,LN8,LN9,NG19,NG20,NG23,NG34,NR21,NR22,NR23,NR25,PE12,PE20,PE21,PE22,PE23,PE24,PE25,PE27,PE28,PE30,PE31,PE32,PE33,PE34,PE36,S74,YO11,YO13,YO14,YO25,S1,S10,S11,S3,S40,S41,S42,S45,S5,S7,BB18,BD1,BD10,BD11,BD12,BD13,BD15,BD16,BD17,BD18,BD19,BD2,BD20,BD21,BD22,BD24,BD3,BD4,BD5,BD6,BD7,BD8,BD9,DE55,DN1,DN10,DN11,DN12,DN14,DN17,DN18,DN22,DN3,DN4,DN5,DN6,DN7,DN8,DN9,HD1,HD2,HD3,HD4,HD5,HD6,HD7,HD8,HD9,HG3,HG5,HU15,HX1,HX2,HX3,HX4,HX5,HX6,HX7,LN7,LS1,LS10,LS11,LS12,LS13,LS14,LS15,LS17,LS18,LS19,LS2,LS20,LS21,LS22,LS23,LS24,LS25,LS26,LS28,LS29,LS3,LS4,LS5,LS6,LS7,LS8,LS9,NG17,NG18,NG21,NG22,OL14,S12,S13,S14,S17,S18,S2,S20,S21,S25,S32,S35,S36,S4,S43,S44,S6,S60,S61,S62,S63,S64,S65,S66,S71,S72,S73,S75,S8,S80,S81,S9,WF1,WF10,WF11,WF12,WF13,WF14,WF15,WF16,WF17,WF2,WF3,WF4,WF5,WF6,WF7,WF8,WF9,YO1,YO10,YO19,YO23,YO24,YO30,YO31,YO41,YO42,YO43,YO8',
+    'stv-central'     => 'EH1,EH10,EH11,EH12,EH13,EH14,EH15,EH16,EH17,EH18,EH19,EH2,EH21,EH22,EH23,EH24,EH25,EH26,EH27,EH28,EH29,EH3,EH32,EH33,EH34,EH35,EH36,EH37,EH38,EH39,EH4,EH41,EH46,EH47,EH48,EH49,EH5,EH51,EH52,EH53,EH54,EH55,EH8,EH9,EH20,EH40,FK1,FK10,FK11,FK12,FK13,FK14,FK15,FK16,FK17,FK19,FK2,FK3,FK4,FK5,FK6,FK7,FK8,FK9,FK21,G1,G11,G12,G13,G14,G15,G2,G20,G21,G22,G3,G31,G32,G33,G34,G4,G40,G41,G42,G43,G44,G45,G46,G5,G51,G52,G53,G60,G61,G62,G63,G64,G65,G66,G67,G68,G69,G71,G72,G73,G74,G75,G76,G77,G78,G81,G82,G83,KY1,KY11,KY12,KY2,KY3,KY4,KY5,KY8,KY9,ML1,ML10,ML11,ML12,ML2,ML3,ML4,ML5,ML6,ML7,ML8,ML9,PA1,PA10,PA11,PA12,PA13,PA14,PA16,PA17,PA18,PA19,PA2,PA20,PA21,PA3,PA31,PA32,PA33,PA35,PA37,PA4,PA41,PA5,PA6,PA64,PA65,PA7,PA72,PA8,PA9',
+    'stv-north'       => 'AB10,AB11,AB12,AB13,AB14,AB15,AB16,AB21,AB22,AB23,AB24,AB25,AB30,AB31,AB32,AB33,AB34,AB35,AB36,AB38,AB39,AB41,AB42,AB43,AB45,AB51,AB52,AB53,AB54,AB55,AB56,DD1,DD11,DD4,DD5,DD7,DD8,DD2,DD3,HS1,HS7,IV1,IV10,IV12,IV14,IV15,IV16,IV17,IV18,IV2,IV20,IV21,IV22,IV25,IV28,IV3,IV30,IV32,IV36,IV48,IV5,IV53,IV54,IV6,IV8,IV9,KA1,KA11,KA12,KA13,KA14,KA15,KA16,KA17,KA18,KA19,KA2,KA20,KA21,KA22,KA23,KA24,KA25,KA26,KA27,KA29,KA3,KA30,KA4,KA5,KA6,KA8,KA9,KW1,KW10,KW11,KW12,KW16,KW2,KW3,KW5,KW6,KW7,KY13,KY14,KY15,KY16,KY6,KY7,PH1,PH11,PH12,PH13,PH14,PH15,PH16,PH2,PH21,PH23,PH24,PH25,PH26,PH4,PH5,PH6,PH36,PH37,ZE1,ZE3',
+);
+
+my %bbc_one_regs = (
+    'northern-ireland.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Northern Ireland',
+        'short-name' => 'BBC One',
+        'availability' => { 'country' => [ 'Northern Ireland' ], },
+    },
+    'scotland.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Scotland',
+        'short-name' => 'BBC One',
+        'availability' => { 'country' => [ 'Scotland' ], },
+    },
+    'wales.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Wales',
+        'short-name' => 'BBC One',
+        'availability' => { 'country' => [ 'Wales' ], },
+    },
+    'ci.south-west.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Channel Islands',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'south-west-ci'} },
+    },
+    'east.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One East (E)',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'east-east'} },
+    },
+    'west.east.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One East (W)',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'east-west'} },
+    },
+    'east-midlands.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One East Midlands',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'east-midlands'} },
+    },
+    'london.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One London',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'london'} },
+    },
+    'north-east.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One North East & Cumbria',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'north-east'} },
+    },
+    'north-west.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One North West',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'north-west'} },
+    },
+    'oxford.south.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Oxford',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'south-oxford'} },
+    },
+    'south.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One South',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'south'} },
+    },
+    'south-east.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One South East',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'south-east'} },
+    },
+    'south-west.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One South West',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'south-west'} },
+    },
+    'west.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One West',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'west'} },
+    },
+    'west-midlands.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One West Midlands',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'west-midlands'} },
+    },
+    'yorkshire.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Yorkshire',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'yorkshire'} },
+    },
+    'yorkslincs.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Yorkshire & Lincolnshire',
+        'short-name' => 'BBC One',
+        'availability' => { 'postcode' => $bbc_one_postcodes{'yorkslincs'} },
+    },
+);
+
+my %bbc_one_regs_ni = (
+    'northern-ireland.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Northern Ireland',
+        'short-name' => 'BBC One',
+        'availability' => { 'country' => [ 'Ireland' ], },
+    },
+);
+
+my %bbc_two_regs = (
+    'bbc2.bbc.co.uk' => {
+        'name' => 'BBC Two England',
+        'short-name' => 'BBC Two',
+        'availability' => { 'country' => [ 'England' ], },
+    },
+    'northern-ireland.bbc2.bbc.co.uk' => {
+        'name' => 'BBC Two Northern Ireland',
+        'short-name' => 'BBC Two',
+        'availability' => { 'country' => [ 'Northern Ireland' ], },
+    },
+    'scotland.bbc2.bbc.co.uk' => {
+        'name' => 'BBC Two Scotland',
+        'short-name' => 'BBC Two',
+        'availability' => { 'country' => [ 'Scotland' ], },
+    },
+    'wales.bbc2.bbc.co.uk' => {
+        'name' => 'BBC Two Wales',
+        'short-name' => 'BBC Two',
+        'availability' => { 'country' => [ 'Wales' ], },
+    },
+);
+
+my %bbc_two_regs_ni = (
+    'northern-ireland.bbc2.bbc.co.uk' => {
+        'name' => 'BBC Two Northern Ireland',
+        'short-name' => 'BBC Two',
+        'availability' => { 'country' => [ 'Ireland' ], },
+    },
+);
+
+my %itv_one_regs = (
+    'wales.itv1.itv.co.uk' => {
+        'name' => 'ITV1 Wales',
+        'short-name' => 'ITV1',
+        'availability' => { 'country' => [ 'Wales' ], },
+    },
+    'u.tv' => {
+        'name' => 'UTV',
+        'short-name' => 'ITV1',
+        'availability' => { 'country' => [ 'Northern Ireland' ], },
+    },
+    'anglia.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'anglia'} },
+    },
+    'border.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'border'} },
+    },
+    'central.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'central'} },
+    },
+    'channel.itv1.itv.co.uk' => {
+        'name' => 'ITV1 Channel Television',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'channel'} },
+    },
+    'granada.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'granada'} },
+    },
+    'london.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'london'} },
+    },
+    'meridian.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'meridian'} },
+    },
+    'scottish.border.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'scottish-border'} },
+    },
+    'central.stv.tv' => {
+        'name' => 'STV Central',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'stv-central'} },
+    },
+    'north.stv.tv' => {
+        'name' => 'STV North',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'stv-north'} },
+    },
+    'tynetees.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'tynetees'} },
+    },
+    'west.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'west'} },
+    },
+    'westcountry.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'westcountry'} },
+    },
+    'yorkshire.itv1.itv.co.uk' => {
+        'name' => 'ITV1',
+        'short-name' => 'ITV1',
+        'availability' => { 'postcode' => $itv_one_postcode{'yorkshire'} },
+    },
+);
+
+# Sky/Freesat
+# No separate ITV1 Border (Scottish) feed
+my %itv_one_regs_satellite = %itv_one_regs;
+delete $itv_one_regs_satellite{'scottish.border.itv1.itv.co.uk'};
+delete $itv_one_regs_satellite{'border.itv1.itv.co.uk'};
+$itv_one_regs_satellite{'border.itv1.itv.co.uk'} = {
+    'name' => 'ITV1',
+    'short-name' => 'ITV1',
+    'availability' => { 'postcode' => $itv_one_postcode{'border'} . ","
+                                    . $itv_one_postcode{'scottish-border'} },
+},
+
+# Freeview
+my %itv_one_plus_one_regs_terrestrial = (
+    'tsod.plus-1.ni-macro.u.tv' => {
+        'name' => 'UTV +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'country' => [ 'Northern Ireland' ], },
+    },
+    'tsod.plus-1.wales.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1 Wales',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'country' => [ 'Wales' ], },
+    },
+    'tsod.plus-1.anglia.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'anglia'} },
+    },
+    'tsod.plus-1.central.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'central'} },
+    },
+    'tsod.plus-1.granada.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
+                                        . $itv_one_postcode{'border'} . ","
+                                        . $itv_one_postcode{'scottish-border'} },
+    },
+    'tsod.plus-1.london.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'london'} },
+    },
+    'tsod.plus-1.meridian.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'meridian'} },
+    },
+    'tsod.plus-1.central.stv.tv' => {
+        'name' => 'STV +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'stv-central'} },
+    },
+    'tsod.plus-1.north.stv.tv' => {
+        'name' => 'STV +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'stv-north'} },
+    },
+    'tsod.plus-1.tynetees.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'tynetees'} },
+    },
+    'tsod.plus-1.west.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'west'} },
+    },
+    'tsod.plus-1.westcountry.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'westcountry'} },
+    },
+    'tsod.plus-1.yorkshire.itv1.itv.co.uk' => {
+        'name' => 'ITV1 +1',
+        'short-name' => 'ITV1 +1',
+        'availability' => { 'postcode' => $itv_one_postcode{'yorkshire'} },
+    },
+);
+
+# Virgin
+# Same channels as Freeview (for now)
+my %itv_one_plus_one_regs_virgin = %itv_one_plus_one_regs_terrestrial;
+
+# Freesat
+# No UTV +1. No STV +1. No FTA ITV1 +1 Yorkshire
+my %itv_one_plus_one_regs_freesat = %itv_one_plus_one_regs_terrestrial;
+delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.ni-macro.u.tv'};
+delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.north.stv.tv'};
+delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.central.stv.tv'};
+
+delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.yorkshire.itv1.itv.co.uk'};
+$itv_one_plus_one_regs_freesat{'tsod.plus-1.granada.itv1.itv.co.uk'} = {
+    'name' => 'ITV1 +1',
+    'short-name' => 'ITV1 +1',
+    'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
+                                    . $itv_one_postcode{'border'} . ","
+                                    . $itv_one_postcode{'scottish-border'} . ","
+                                    . $itv_one_postcode{'yorkshire'} },
+},
+
+# Sky
+# No UTV +1. No STV +1
+my %itv_one_plus_one_regs_sky = %itv_one_plus_one_regs_terrestrial;
+delete $itv_one_plus_one_regs_sky{'tsod.plus-1.ni-macro.u.tv'};
+delete $itv_one_plus_one_regs_sky{'tsod.plus-1.north.stv.tv'};
+delete $itv_one_plus_one_regs_sky{'tsod.plus-1.central.stv.tv'};
+
+# Freeview
+my %itv_one_hd_regs_terrestrial = (
+    'hd.ni-macro.u.tv' => {
+        'name' => 'UTV HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'country' => [ 'Northern Ireland' ], },
+    },
+    'hd.central-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'central'} },
+    },
+    'hd.northwest-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
+                                        . $itv_one_postcode{'border'} . ","
+                                        . $itv_one_postcode{'scottish-border'} },
+    },
+    'hd.london-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'london'} },
+    },
+    'hd.southeast-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'meridian'} . ","
+                                        . $itv_one_postcode{'anglia'} },
+    },
+    'hd.west-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'west'} . ","
+                                        . $itv_one_postcode{'westcountry'},
+                            'country' => [ 'Wales' ], },
+    },
+    'hd.northeast-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'yorkshire'} . ","
+                                        . $itv_one_postcode{'tynetees'} },
+    },
+    'hd.scotland-macro.stv.tv' => {
+        'name' => 'STV HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'stv-central'} . ","
+                                        . $itv_one_postcode{'stv-north'} },
+    },
+);
+
+# Virgin
+# Same channels as Freeview (for now)
+my %itv_one_hd_regs_virgin = %itv_one_hd_regs_terrestrial;
+
+# Freesat
+# No UTV HD. No STV HD. Only ITV1 HD London and ITV1 HD Granada are FTA
+my %itv_one_hd_regs_freesat = (
+    'hd.london-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'london'} . ","
+                                        . $itv_one_postcode{'central'} . ","
+                                        . $itv_one_postcode{'meridian'} . ","
+                                        . $itv_one_postcode{'anglia'} . ","
+                                        . $itv_one_postcode{'west'} . ","
+                                        . $itv_one_postcode{'westcountry'},
+                            'country' => [ 'Wales' ], },
+    },
+    'hd.northwest-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
+                                        . $itv_one_postcode{'border'} . ","
+                                        . $itv_one_postcode{'scottish-border'} . ","
+                                        . $itv_one_postcode{'yorkshire'} . ","
+                                        . $itv_one_postcode{'tynetees'} },
+    },
+);
+
+# Sky
+# No UTV HD. No STV HD
+my %itv_one_hd_regs_sky = %itv_one_hd_regs_terrestrial;
+delete $itv_one_hd_regs_sky{'hd.ni-macro.u.tv'};
+delete $itv_one_hd_regs_sky{'hd.scotland-macro.stv.tv'};
+
+
+my %setanta_ireland_sky = (
+    'setantasport.ie' => {
+        'name' => 'Setanta Ireland',
+        'availability' => { 'country' => [ 'Northern Ireland', 'Ireland' ] },
+    },
+);
+
+my %setanta_sports_1_sky = (
+    '1.setantasport.ie' => {
+        'name' => 'Setanta Sports 1',
+        'availability' => { 'country' => [ 'Northern Ireland', 'Ireland' ] },
+    },
+);
+
+
+#***************************************************************************
+#                             Wikipedia variables                          *
+#***************************************************************************
+#
+my %wp_chan_names;    # filled by process_channel_table()
+my %xmltv_chan_names; # filled by get_tidied_xmltv_channels()
+
+my @channel_fields = qw{ num name notes owner hours mux package format };
+my $citation_regex = qr/\s*\[n\s+\d+\]\s*/i;
+
+my $WP_ROOT_URL     = 'http://en.wikipedia.org/wiki/';
+my $FREESAT_URL     = $WP_ROOT_URL . 'List_of_channels_on_Freesat';
+my $FREEVIEW_URL    = $WP_ROOT_URL . 'List_of_digital_terrestrial_television_channels_(UK)';
+my $SAORVIEW_URL    = $WP_ROOT_URL . 'List_of_channels_on_Saorview';
+my $SKY_URL         = $WP_ROOT_URL . 'List of channels on Sky';
+my $UPCIRELAND_URL  = $WP_ROOT_URL . 'List_of_channels_on_UPC_Ireland';
+my $VIRGINTV_URL    = $WP_ROOT_URL . 'List_of_channels_on_Virgin_TV';
+my $HDTV_URL        = $WP_ROOT_URL . 'List_of_HD_channels_in_the_UK';
+
+# hashes to store cached copies of processed wikipedia channel lists
+my %unfiltered_wp_channels; # filled by get_unfiltered_wp_channels()
+my %filtered_wp_channels;   # filled by get_filtered_wp_channels()
+
+#***************************************************************************
+#                         Source/Generator variables                       *
+#***************************************************************************
+#
+my $SOURCE_INFO_NAME = "Wikipedia/tv_grab_uk_rt/dvbscan";
+my $SOURCE_INFO_URL  = $WP_ROOT_URL . "Television_in_the_United_Kingdom";
+
+my $GENERATOR_INFO_NAME = "XMLTV lineup generator for UK & Eire";
+my $GENERATOR_INFO_URL  = "https://github.com/knowledgejunkie/";
+
+#***************************************************************************
+#                   Platform/package configuration hash                    *
+#***************************************************************************
+#
+my %lineup_config = (
+    'freesat' => {
+        'desc'              => 'Freesat',
+        'lineup-type'       => 'DTV',
+        'icon'              => 'http://www.lyngsat-logo.com/logo/corp/ff/freesat.jpg',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', 'Ireland', ], },
+        'platform-url'      => $FREESAT_URL,
+        'package-handler'   => \&get_filtered_freesat_channels,
+        'dvb-sid-map'       => 'freesat.map',
+        'regional-handlers' => {
+            'BBC One' => { 101 => \%bbc_one_regs, },
+            'BBC Two' => { 102 => \%bbc_two_regs, },
+            'ITV'     => { 103 => \%itv_one_regs_satellite, },
+            'ITV1 +1' => { 112 => \%itv_one_plus_one_regs_freesat, },
+            'ITV1 HD' => { 119 => \%itv_one_hd_regs_freesat, },
+        },
+        'packages'          => {
+        },
+        'includes-hdtv'     => 0,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 900, 999, ],
+    },
+    'freesathd' => {
+        'desc'              => 'Freesat HD',
+        'lineup-type'       => 'DTV',
+        'icon'              => 'http://www.lyngsat-logo.com/logo/corp/ff/freesat.jpg',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', 'Ireland', ], },
+        'platform-url'      => $FREESAT_URL,
+        'package-handler'   => \&get_filtered_freesathd_channels,
+        'dvb-sid-map'       => 'freesat.map',
+        'regional-handlers' => {
+            'BBC One' => { 101 => \%bbc_one_regs, },
+            'BBC Two' => { 102 => \%bbc_two_regs, },
+            'ITV'     => { 103 => \%itv_one_regs_satellite, },
+            'ITV1 +1' => { 112 => \%itv_one_plus_one_regs_freesat, },
+            'ITV1 HD' => { 119 => \%itv_one_hd_regs_freesat, },
+        },
+        'packages'          => {
+        },
+        'includes-hdtv'     => 1,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 900, 999, ],
+    },
+    'freesatfromsky' => {
+        'desc'              => 'Sky (Freesat from Sky)',
+        'lineup-type'       => 'STB',
+        'icon'              => 'http://www.lyngsat-logo.com/logo/corp/ss/sky_uk.jpg',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', 'Ireland', ], },
+        'platform-url'      => $SKY_URL,
+        'package-handler'   => \&get_filtered_freesatfromsky_channels,
+        'regional-handlers' => {
+            'BBC One' => { 101 => \%bbc_one_regs,
+                           141 => \%bbc_one_regs_ni, },
+            'BBC One Northern Ireland'
+                      => { 141 => \%bbc_one_regs_ni, },
+            'BBC Two' => { 102 => \%bbc_two_regs,
+                           142 => \%bbc_two_regs_ni, },
+            'BBC Two Northern Ireland'
+                      => { 142 => \%bbc_two_regs_ni, },
+            'ITV'     => { 103 => \%itv_one_regs_satellite, },
+            'ITV1 +1' => { 112 => \%itv_one_plus_one_regs_sky, },
+            'ITV1 HD' => { 119 => \%itv_one_hd_regs_sky, },
+        },
+        'packages'          => {
+        },
+        'includes-hdtv'     => 0,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 881, 889, 899, 970, 996, 997, 998, 999, ],
+    },
+    'freeview' => {
+        'desc'              => 'Freeview',
+        'lineup-type'       => 'DTV',
+        'icon'              => 'http://www.lyngsat-logo.com/logo/corp/ff/freeview.jpg',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', ], },
+        'platform-url'      => $FREEVIEW_URL,
+        'package-handler'   => \&get_filtered_freeview_channels,
+        'dvb-sid-map'       => 'freeview.map',
+        'regional-handlers' => {
+            'BBC One' => {  1 => \%bbc_one_regs, },
+            'BBC Two' => {  2 => \%bbc_two_regs, },
+            'ITV'     => {  3 => \%itv_one_regs, },
+            'ITV +1'  => { 33 => \%itv_one_plus_one_regs_terrestrial, },
+            'ITV HD'  => { 51 => \%itv_one_hd_regs_terrestrial, },
+        },
+        'packages'          => {
+        },
+        'includes-hdtv'     => 0,
+        'ignore-xmltvids'   => ['communitychannel.org',
+                                'aljazeera.net',
+                                'foodnetwork.com',
+                                'tsod.plus-1.dave.uktv.co.uk',
+                                's4c.co.uk',
+                                'hd.channel4.com',],
+    },
+    'freeviewhd' => {
+        'desc'              => 'Freeview HD',
+        'lineup-type'       => 'DTV',
+        'icon'              => 'http://www.lyngsat-logo.com/logo/corp/ff/freeview.jpg',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', ], },
+        'platform-url'      => $FREEVIEW_URL,
+        'package-handler'   => \&get_filtered_freeviewhd_channels,
+        'dvb-sid-map'       => 'freeview.map',
+        'regional-handlers' => {
+            'BBC One' => {  1 => \%bbc_one_regs, },
+            'BBC Two' => {  2 => \%bbc_two_regs, },
+            'ITV'     => {  3 => \%itv_one_regs, },
+            'ITV +1'  => { 33 => \%itv_one_plus_one_regs_terrestrial, },
+            'ITV HD'  => { 51 => \%itv_one_hd_regs_terrestrial, },
+        },
+        'packages'          => {
+        },
+        'includes-hdtv'     => 1,
+        'ignore-xmltvids'   => ['communitychannel.org',
+                                'aljazeera.net',
+                                'foodnetwork.com',
+                                'tsod.plus-1.dave.uktv.co.uk',
+                                's4c.co.uk',
+                                'hd.channel4.com',],
+    },
+    'saorview' => {
+        'desc'              => 'Saorview',
+        'lineup-type'       => 'DTV',
+        'availability'      => {
+            'country' => [ 'Ireland',], },
+        'platform-url'      => $SAORVIEW_URL,
+        'package-handler'   => \&get_filtered_saorview_channels,
+        'dvb-sid-map'       => 'saorview.map',
+        'packages'          => {
+        },
+        'includes-hdtv'     => 1,
+        'ignore-nums'       => [ 5, 11, 12, 13, 14, 15, 16, 17, ],
+    },
+    'sky' => {
+        'desc'              => 'Sky',
+        'lineup-type'       => 'STB',
+        'icon'              => 'http://www.lyngsat-logo.com/logo/corp/ss/sky_uk.jpg',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', 'Ireland',], },
+        'platform-url'      => $SKY_URL,
+        'package-handler'   => \&get_filtered_sky_channels,
+        'regional-handlers' => {
+            'BBC One'          => { 101 => \%bbc_one_regs,
+                                    141 => \%bbc_one_regs_ni, },
+            'BBC One Northern Ireland'
+                               => { 141 => \%bbc_one_regs_ni, },
+            'BBC Two'          => { 102 => \%bbc_two_regs,
+                                    142 => \%bbc_two_regs_ni, },
+            'BBC Two Northern Ireland'
+                               => { 142 => \%bbc_two_regs_ni, },
+            'ITV'              => { 103 => \%itv_one_regs_satellite, },
+            'ITV1 +1'          => { 131 => \%itv_one_plus_one_regs_sky, },
+            'ITV1 HD'          => { 178 => \%itv_one_hd_regs_sky, },
+            'Setanta Ireland'  => { 423 => \%setanta_ireland_sky, },
+            'Setanta Sports 1' => { 424 => \%setanta_sports_1_sky, },
+        },
+        'packages'          => {
+        },
+        'includes-hdtv'     => 0,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 881, 889, 899, 970, 996, 997, 998, 999, ],
+    },
+    'skyhd' => {
+        'desc'              => 'Sky HD',
+        'lineup-type'       => 'STB',
+        'icon'              => 'http://www.lyngsat-logo.com/logo/corp/ss/sky_uk.jpg',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', 'Ireland',], },
+        'platform-url'      => $SKY_URL,
+        'package-handler'   => \&get_filtered_skyhd_channels,
+        'regional-handlers' => {
+            'BBC One'          => { 101 => \%bbc_one_regs,
+                                    141 => \%bbc_one_regs_ni, },
+            'BBC One Northern Ireland'
+                               => { 141 => \%bbc_one_regs_ni, },
+            'BBC Two'          => { 102 => \%bbc_two_regs,
+                                    142 => \%bbc_two_regs_ni, },
+            'BBC Two Northern Ireland'
+                               => { 142 => \%bbc_two_regs_ni, },
+            'ITV'              => { 103 => \%itv_one_regs_satellite, },
+            'ITV1 +1'          => { 131 => \%itv_one_plus_one_regs_sky, },
+            'ITV1 HD'          => { 178 => \%itv_one_hd_regs_sky, },
+            'Setanta Ireland'  => { 423 => \%setanta_ireland_sky, },
+            'Setanta Sports 1' => { 424 => \%setanta_sports_1_sky, },
+        },
+        'packages'          => {
+        },
+        'includes-hdtv'     => 1,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 881, 889, 899, 970, 996, 997, 998, 999, ],
+    },
+    'upcireland' => {
+        'desc'              => 'UPC Ireland',
+        'lineup-type'       => 'STB',
+        'availability'      => {
+            'country' => [ 'Ireland',], },
+        'platform-url'      => $UPCIRELAND_URL,
+        'package-handler'   => \&get_filtered_upcireland_channels,
+        'unique-packages'   => [ "Value", "Select", "Select Extra", "Max", ],
+        'packages'          => {
+        },
+        'includes-hdtv'     => 0,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 100, 119, 831, 832, 833, 834, 836, 862, ],
+    },
+    'upcirelandhd' => {
+        'desc'              => 'UPC Ireland HD',
+        'lineup-type'       => 'STB',
+        'availability'      => {
+            'country' => [ 'Ireland',], },
+        'platform-url'      => $UPCIRELAND_URL,
+        'package-handler'   => \&get_filtered_upcirelandhd_channels,
+        'unique-packages'   => [ "Value", "Select", "Select Extra", "Max", ],
+        'packages'          => {
+        },
+        'includes-hdtv'     => 1,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 100, 119, 831, 832, 833, 834, 836, 862, ],
+    },
+    'virgin' => {
+        'desc'              => 'Virgin TV',
+        'lineup-type'       => 'STB',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', ], },
+        'platform-url'      => $VIRGINTV_URL,
+        'package-handler'   => \&get_filtered_virgin_channels,
+        'unique-packages'   => [ "M", "M+", "L", "XL", ],
+        'regional-handlers' => {
+            'BBC One' => { 101 => \%bbc_one_regs, },
+            'BBC Two' => { 102 => \%bbc_two_regs, },
+            'ITV'     => { 103 => \%itv_one_regs, },
+            'ITV +1'  => { 114 => \%itv_one_plus_one_regs_virgin, },
+            'ITV HD'  => { 113 => \%itv_one_hd_regs_virgin, },
+        },
+        'channel-handlers'  => {
+            'BBC One AD'   => { 851 => 'london.bbc1.bbc.co.uk'},
+            'BBC Two AD'   => { 852 => 'bbc2.bbc.co.uk'},
+            'ITV1 AD'      => { 853 => 'london.itv1.itv.co.uk'},
+            'Channel 4 AD' => { 854 => 'channel4.com'},
+            'Channel 5 AD' => { 855 => 'channel5.co.uk'},
+            'S4C AD'       => { 856 => 's4c.co.uk'},
+        },
+        'packages'          => {
+            # Sky Movies
+            'Sky Movies Premiere' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Premiere +1' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Showcase' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Summer' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Comedy' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Action & Adventure' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Family' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Crime & Thriller' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Drama & Romance' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Sci-Fi & Horror' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Modern Greats' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Classics' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Indie' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Disney Cinemagic' => { 'subscription' =>  [ 'Sky Movies Collection', 'Premium', ], },
+            # Sky Sports
+            'Sky Sports 1' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', 'Premium', ], },
+            'Sky Sports 2' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', 'Premium', ], },
+            'Sky Sports 3' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', ], },
+            'Sky Sports 4' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', ], },
+            'Sky Sports F1' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', ], },
+            # ESPN
+            'ESPN' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
+            'ESPN America' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
+            # Premium Channels
+            'Cinémoi' => { 'subscription' =>  [ 'Premium', ], },
+            'MUTV' => { 'subscription' =>  [ 'Premium', ], },
+            'Racing UK' => { 'subscription' =>  [ 'Premium', ], },
+            'BoxNation' => { 'subscription' =>  [ 'Premium', ], },
+            'BabyTV' => { 'subscription' =>  [ 'Premium', ], },
+            # Asian Channels
+            'ABP News' => { 'subscription' =>  [ 'Asian Mela', 'STAR Bundle', ], },
+            'STAR Plus' => { 'subscription' =>  [ 'Asian Mela', 'STAR Bundle', ], },
+            'Sony Entertainment Television Asia' => { 'subscription' =>  [ 'Asian Mela', 'SET Bundle', ], },
+            'SET Max' => { 'subscription' =>  [ 'Asian Mela', 'SET Bundle', ], },
+            'Zee TV' => { 'subscription' =>  [ 'Asian Mela', 'Premium', 'Zee Bundle', ], },
+            'Zee Cinema' => { 'subscription' =>  [ 'Asian Mela', 'Zee Bundle', ], },
+            'Zee Punjabi' => { 'subscription' =>  [ 'Asian Mela', 'Zee Bundle', ], },
+            'B4U Movies' => { 'subscription' =>  [ 'Asian Mela', ], },
+            'B4U Music' => { 'subscription' =>  [ 'Asian Mela', ], },
+            'ARY Digital' => { 'subscription' =>  [ 'Asian Mela', ], },
+            'Colors' => { 'subscription' =>  [ 'Asian Mela', ], },
+            # Adult
+            'Television X' => { 'subscription' =>  [ 'Premium', 'Adult Collection', ], },
+            'Playboy TV' => { 'subscription' =>  [ 'Premium', 'Adult Collection', ], },
+            'The Adult Channel' => { 'subscription' =>  [ 'Premium', 'Adult Collection', ], },
+        },
+        'includes-hdtv'     => 0,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 0, 100, 300, 470, 858, 870, 871, 998, 999, ],
+    },
+    'virginhd' => {
+        'desc'              => 'Virgin TV HD',
+        'lineup-type'       => 'STB',
+        'availability'      => {
+            'country' => [ 'England', 'Scotland', 'Wales', 'Northern Ireland', ], },
+        'platform-url'      => $VIRGINTV_URL,
+        'package-handler'   => \&get_filtered_virginhd_channels,
+        'unique-packages'   => [ "M", "M+", "L", "XL", ],
+        'regional-handlers' => {
+            'BBC One' => { 101 => \%bbc_one_regs, },
+            'BBC Two' => { 102 => \%bbc_two_regs, },
+            'ITV'     => { 103 => \%itv_one_regs, },
+            'ITV +1'  => { 114 => \%itv_one_plus_one_regs_virgin, },
+            'ITV HD'  => { 113 => \%itv_one_hd_regs_virgin, },
+        },
+        'channel-handlers'  => {
+            'BBC One AD'   => { 851 => 'london.bbc1.bbc.co.uk'},
+            'BBC Two AD'   => { 852 => 'bbc2.bbc.co.uk'},
+            'ITV1 AD'      => { 853 => 'london.itv1.itv.co.uk'},
+            'Channel 4 AD' => { 854 => 'channel4.com'},
+            'Channel 5 AD' => { 855 => 'channel5.co.uk'},
+            'S4C AD'       => { 856 => 's4c.co.uk'},
+        },
+        'packages'          => {
+            # Sky Movies
+            'Sky Movies Premiere' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Premiere +1' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Showcase' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Summer' => { 'subscription' => [ 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Comedy' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Action & Adventure' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Family' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Crime & Thriller' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Drama & Romance' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Sci-Fi & Horror' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Modern Greats' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Classics' => { 'subscription' => [ 'Sky Movies 1', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Indie' => { 'subscription' => [ 'Sky Movies 2', 'Sky Movies Collection', 'Sky Sports & Movies', ], },
+            'Sky Movies Premiere HD' => { 'subscription' => [ 'Sky Premium HD', ], },
+            'Sky Movies Showcase HD' => { 'subscription' => [ 'Sky Premium HD', ], },
+            'Sky Movies Summer HD' => { 'subscription' => [ 'Sky Premium HD', ], },
+            'Sky Movies Comedy HD' => { 'subscription' => [ 'Sky Premium HD', ], },
+            'Sky Movies Action & Adventure HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Movies Family HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Movies Crime & Thriller HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Movies Drama & Romance HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Movies Sci-Fi & Horror HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Movies Modern Greats HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Movies Classics HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Movies Indie HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Disney Cinemagic' => { 'subscription' =>  [ 'Sky Movies Collection', 'Premium', ], },
+            # Sky Sports
+            'Sky Sports 1' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', 'Premium', ], },
+            'Sky Sports 2' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', 'Premium', ], },
+            'Sky Sports 3' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', ], },
+            'Sky Sports 4' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', ], },
+            'Sky Sports F1' => { 'subscription' =>  [ 'Sky Sports Collection', 'Sky Sports & Movies', ], },
+            'Sky Sports 1 HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            'Sky Sports 2 HD' => { 'subscription' =>  [ 'Sky Premium HD', ], },
+            # ESPN
+            'ESPN' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
+            'ESPN HD' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
+            'ESPN America' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
+            # Premium Channels
+            'Cinémoi' => { 'subscription' =>  [ 'Premium', ], },
+            'MUTV' => { 'subscription' =>  [ 'Premium', ], },
+            'Racing UK' => { 'subscription' =>  [ 'Premium', ], },
+            'BoxNation' => { 'subscription' =>  [ 'Premium', ], },
+            'BabyTV' => { 'subscription' =>  [ 'Premium', ], },
+            # Asian Channels
+            'ABP News' => { 'subscription' =>  [ 'Asian Mela', 'STAR Bundle', ], },
+            'STAR Plus' => { 'subscription' =>  [ 'Asian Mela', 'STAR Bundle', ], },
+            'Sony Entertainment Television Asia' => { 'subscription' =>  [ 'Asian Mela', 'SET Bundle', ], },
+            'SET Max' => { 'subscription' =>  [ 'Asian Mela', 'SET Bundle', ], },
+            'Zee TV' => { 'subscription' =>  [ 'Asian Mela', 'Premium', 'Zee Bundle', ], },
+            'Zee Cinema' => { 'subscription' =>  [ 'Asian Mela', 'Zee Bundle', ], },
+            'Zee Punjabi' => { 'subscription' =>  [ 'Asian Mela', 'Zee Bundle', ], },
+            'B4U Movies' => { 'subscription' =>  [ 'Asian Mela', ], },
+            'B4U Music' => { 'subscription' =>  [ 'Asian Mela', ], },
+            'ARY Digital' => { 'subscription' =>  [ 'Asian Mela', ], },
+            'Colors' => { 'subscription' =>  [ 'Asian Mela', ], },
+            # Adult
+            'Television X' => { 'subscription' =>  [ 'Premium', 'Adult Collection', ], },
+            'Playboy TV' => { 'subscription' =>  [ 'Premium', 'Adult Collection', ], },
+            'The Adult Channel' => { 'subscription' =>  [ 'Premium', 'Adult Collection', ], },
+        },
+        'includes-hdtv'     => 1,
+        'ignore-xmltvids'   => ['freeview.communitychannel.org',
+                                'freeview.aljazeera.net',
+                                'freeview.foodnetwork.com',
+                                'tsod.plus-1.freeview.dave.uktv.co.uk',
+                                'freeview.hd.channel4.com',
+                                'wales.s4c.co.uk',],
+        'ignore-nums'       => [ 0, 100, 300, 470, 858, 870, 871, 998, 999, ],
+    },
+);
+
+my $usage = <<"END_USAGE";
+
+$0 --list-platforms
+
+    Print XML document containing supported TV platforms
+
+
+$0 --generate-lineup --platform PLATFORM
+
+    Print XML document containing lineup for the given PLATFORM
+
+
+$0 --list-icons --platform PLATFORM
+
+    List channel icon URLs (one per line, where available) for
+    channels on given PLATFORM
+
+
+$0 --help
+
+    Display basic usage information
+
+
+$0 --debug-help
+
+    Display debug usage information (useful for development)
+
+
+END_USAGE
+
+my $debug_usage = <<"END_DEBUG_USAGE";
+
+$0 --list-platforms-text
+
+    Print text list of supported TV platforms
+
+
+$0 --generate-text --platform PLATFORM
+
+    Print text lineup for the given PLATFORM
+
+
+$0 --list-channels --platform PLATFORM [--order epgnum|package]
+
+    Print list of available channels on given PLATFORM. Outut can
+    optionally be ordered by EPG number (default) or by package.
+
+
+$0 --check-hd-chans
+
+    Check for unsupported HDTV simulcast channels
+
+
+$0 --compare-names
+
+    Determine unmatched channel names in XMLTV/Wikipedia data
+
+
+END_DEBUG_USAGE
+
+#***************************************************************************
+#                         CLI Option handling                              *
+#***************************************************************************
+
+my $help                    = q{};
+my $debug_help              = q{};
+my $debug                   = q{};
+my $quiet                   = q{};
+
+my $platform                = q{};
+my $listplatformsxml        = q{};
+my $generatexml             = q{};
+my $listicons               = q{};
+
+my $checkhdtv               = q{};
+my $comparenames            = q{};
+my $listplatformstext       = q{};
+my $generatetext            = q{};
+my $listchannels            = q{};
+
+my $sortorder               = 'epgnum';
+
+# Enable negatable filtering options by default
+my $hdtv  = '1';
+my $sdtv  = '1';
+my $radio = '1';
+
+# process CLI options
+GetOptions(
+    'help'                      => \$help,
+    'debug-help'                => \$debug_help,
+    'debug'                     => \$debug,
+    'quiet'                     => \$quiet,
+
+    'platform=s'                => \$platform,
+    'list-platforms'            => \$listplatformsxml,
+    'generate-lineup'           => \$generatexml,
+    'list-icons'                => \$listicons,
+
+    'check-hd-chans'            => \$checkhdtv,
+    'compare-names'             => \$comparenames,
+
+    'list-platforms-text'       => \$listplatformstext,
+    'generate-text'             => \$generatetext,
+    'list-channels'             => \$listchannels,
+    'order=s'                   => \$sortorder,
+
+    'hdtv!'                     => \$hdtv,
+    'sdtv!'                     => \$sdtv,
+    'radio!'                    => \$radio,
+);
+
+if ($help) {
+    print_usage();
+    exit 0;
+}
+
+if ($debug_help) {
+    print_debug_usage();
+    exit 0;
+}
+
+if ($debug && $quiet) {
+    print "Invalid option\n\n";
+    print "You can't specify --debug with --quiet\n";
+    exit 1;
+}
+
+if ($checkhdtv) {
+    check_hdtv_coverage();
+    exit 0;
+}
+
+if ($comparenames) {
+    # create list of unique channel list urls - multiple
+    # platforms can share the same source
+    my %wp_urls;
+    foreach my $lineup_href (keys %lineup_config) {
+        $wp_urls{ $lineup_config{$lineup_href}->{'platform-url'} }++;
+    }
+
+    # call each of the platform handlers to populate hash of WP channel names
+    # but discard returned channel list
+    foreach my $url (keys %wp_urls) {
+        get_unfiltered_wp_channels( $url );
+    }
+
+    # now get the XMLTV data to populate the hash of unique XMLTV channel names.
+    # Discard returned channel list.
+    get_tidied_xmltv_channels();
+
+    # now, compare the two sets of channel names to see which channels are not matched
+    compare_names();
+    exit 0
+}
+
+if ($listplatformsxml) {
+    print_platforms_xml();
+    exit 0;
+}
+
+if ($generatexml) {
+    if ( !validate_platform() ) {
+        print_invalid_platform_msg();
+        exit 1;
+    }
+    generate_xml_from_merged_data();
+    exit 0;
+}
+
+if ($listicons) {
+    if ( !validate_platform() ) {
+        print_invalid_platform_msg();
+        exit 1;
+    }
+    list_icons_for_platform();
+    exit 0;
+}
+
+if ($listplatformstext) {
+    print_platforms();
+    exit 0;
+}
+
+if ($generatetext) {
+    if ( !validate_platform() ) {
+        print_invalid_platform_msg();
+        exit 1;
+    }
+    list_merged_xmltv_wp_data();
+    exit 0;
+}
+
+if ($listchannels) {
+    if ( !validate_platform() ) {
+        print_invalid_platform_msg();
+        exit 1;
+    }
+    if ( !validate_sort_order() ) {
+        print_invalid_sort_order_msg();
+        exit 1;
+    }
+    list_channels_for_platform();
+    exit 0;
+}
+
+#***************************************************************************
+#                         General Subroutines                              *
+#***************************************************************************
+
+# Print usage information
+#
+sub print_usage {
+    print $usage;
+}
+
+# Print debug usage information
+#
+sub print_debug_usage {
+    print $debug_usage;
+}
+
+# Return listref to list of supported platform names
+#
+sub get_platforms {
+    my @platforms = sort keys %lineup_config;
+    return \@platforms;
+}
+
+# Return listref to list of packages available on selected platform.
+#
+sub get_packages_for_platform {
+    my $channels_aref = get_channels_for_platform();
+
+    my %packages;
+    foreach my $chan_aref (@$channels_aref) {
+        if (exists $chan_aref->{'package'}) {
+            my $pkg = $chan_aref->{'package'};
+            $packages{$pkg} = $pkg;
+        }
+    }
+
+    my @pkgs = sort keys %packages;
+
+    return \@pkgs;
+}
+
+# Return listref to list of channels available on selected platform, filtering
+# the list for national/regional variations
+#
+sub get_channels_for_platform {
+    return &get_filtered_wp_channels( $lineup_config{$platform}->{'platform-url'} );
+}
+
+# Filter list of channels to exclude certain types of channels not possible on certain
+# platforms - i.e. HD channels on a non-HD service. Radio channels may or may not
+# be filtered out by default depending on platform.
+#
+sub get_filtered_channels_for_platform {
+    return &{ $lineup_config{$platform}->{'package-handler'} };
+}
+
+# Check that a platform name has been provided at runtime and if so, whether it is
+# supported by this script. Return true if platform is supported, false otherwise.
+#
+sub validate_platform {
+    if ($platform eq '' || ! check_hash( \%lineup_config, ($platform) ) ) {
+        return 0;
+    }
+    return 1;
+}
+
+# Output to be printed when platform validation fails
+#
+sub print_invalid_platform_msg {
+    print "\n";
+    print "Invalid platform selection\n\n";
+    print "Please choose one of the following supported platforms:\n";
+    foreach (@{&get_platforms()}) {
+        print "  " . $_ . "\n";
+    }
+}
+
+# Print a list of available channels on the selected platform and package
+# combination, taking into account national and regional variations and any
+# EPG reordering schemes in effect for the platform. Output list is loosely
+# formatted to include EPG number, channel names and notes.
+#
+sub list_channels_for_platform {
+    my $channels_aref = get_filtered_channels_for_platform();
+
+    # Re-sort channel list if specified at run-time
+    if ($sortorder eq 'package') {
+        $channels_aref = sort_channels_by_package($channels_aref);
+    }
+
+    foreach my $chan_href (@$channels_aref) {
+        printf "%4s  %-35s%-20s%-30.30s\n",
+                $chan_href->{'num'},
+                $chan_href->{'name'},
+                #exists $chan_href->{'package'} ? $chan_href->{'package'} : "",
+                join( "/", get_packages_for_channel($chan_href) ),
+                exists $chan_href->{'notes'}   ? $chan_href->{'notes'}   : "";
+    }
+    print "\n";
+    print scalar @$channels_aref . " channels listed\n";
+    print "\n";
+}
+
+# Sort list of channel hashrefs into package order. Order of packages is the order
+# in which they were seen when traversing the list of channel hashrefs when sorted
+# by EPG num
+#
+sub sort_channels_by_package {
+    my $channels_aref = shift;
+
+    # Create per-package lists of channels
+    my %packages;
+    foreach my $chan_href (@$channels_aref) {
+        my @chan_pkgs = get_packages_for_channel($chan_href);
+        if ( $chan_pkgs[0] ) {
+            push @{ $packages{ $chan_pkgs[0] } }, $chan_href;
+            print "Adding basic package $chan_pkgs[0] for channel $chan_href->{'name'}";
+        }
+        else {
+            push @{ $packages{'unknown'} }, $chan_href;
+        }
+    }
+
+    my @sorted_channels;
+    my %seen_package;
+
+    # Walk down channel list, adding all channels for each new package
+    # seen. Ignore package if we have already seen it
+    foreach my $chan_href (@$channels_aref) {
+        # First time we see a new package
+        my @chan_pkgs = get_packages_for_channel($chan_href);
+        if ( $chan_pkgs[0] ) {
+            if (!$seen_package{ $chan_pkgs[0] }) {
+                push @sorted_channels, @{ $packages{ $chan_pkgs[0] } };
+                $seen_package{ $chan_pkgs[0] }++;
+            }
+        }
+        # First time we see a channel without a package
+        elsif (!$seen_package{'unknown'}) {
+            push @sorted_channels, @{ $packages{'unknown'} };
+            $seen_package{'unknown'}++;
+        }
+    }
+
+    return \@sorted_channels;
+}
+
+# Check whether a specified channel ordering is valid
+#
+sub validate_sort_order {
+    if ($sortorder !~ m/^(epgnum|package)$/i) {
+        return 0;
+    }
+    return 1;
+}
+
+# Output to be printed when channel ordering validation fails
+#
+sub print_invalid_sort_order_msg {
+    print "\n";
+    print "Invalid channel ordering specified\n\n";
+    print "Allowed sorting types are: epgnum package\n";
+    print "\n";
+}
+
+# Retrieve a given TV platform EPG listing from Wikipedia and process all
+# channel tables, returning a sorted list (in EPG num order) of channel
+# references for channels available (inc regional variants).
+#
+sub get_filtered_wp_channels {
+    # Get the complete list of channels on WP page
+    my $WP_URL = shift;
+
+    # return a cached copy of the data if it has already been processed
+    return $filtered_wp_channels{$WP_URL} if defined $filtered_wp_channels{$WP_URL};
+
+    my $epg_sections_aref = get_unfiltered_wp_channels($WP_URL);
+
+    # at this point we should have a data structure containing epg sections,
+    # variations and their channel tables
+
+    my @unsorted_channels;
+
+    foreach my $section_aref (@{ $epg_sections_aref }) {
+        my $epg_section     =   $section_aref->[0];
+        my @variations = @{$section_aref->[1]};
+
+        VARIATION:
+        foreach my $variation_aref (@variations) {
+            my $epg_variation = $variation_aref->[0];
+            print STDERR "Processing variation '$epg_variation' in section '$epg_section'\n" if $debug;
+
+            my $channels_aref = $variation_aref->[1];
+
+            # now process each channel entry in turn
+            CHANNEL:
+            foreach my $chan_href (@{$channels_aref}) {
+
+                # ignore an HDTV channel on an SDTV platform
+                if (exists $chan_href->{'hdtv'} && $chan_href->{'hdtv'}
+                        && !$lineup_config{$platform}->{'includes-hdtv'}) {
+                    print STDERR "Ignoring '$chan_href->{'name'}'. HD channels unavailable on configured platform.\n" if $debug;
+                    next CHANNEL;
+                }
+
+                # ignore a channel marked as "SD receivers only" on an HDTV platform
+                if (exists $chan_href->{'notes'} && $chan_href->{'notes'} =~ m/SD receivers only/i
+                        && $lineup_config{$platform}->{'includes-hdtv'}) {
+                    print STDERR "Ignoring SDTV-only channel '" . $chan_href->{'name'} . "' on HDTV platform.\n" if $debug;
+                    next CHANNEL;
+                }
+
+                # ignore any specific EPG numbers for this platform
+                if ( check_hash( \%lineup_config, ($platform, 'ignore-nums') ) ) {
+                    my @ignore_nums = @{$lineup_config{$platform}->{'ignore-nums'}};
+                    if ( grep { m/^\Q$chan_href->{'num'}\E$/i } @ignore_nums ) {
+                        next CHANNEL;
+                    }
+                }
+
+                if ($epg_variation ne 'Default') {
+                    foreach my $country ('England', 'Scotland', 'Wales', 'Northern Ireland', 'Ireland') {
+                        if ($country eq $epg_variation) {
+                            $chan_href->{'availability'}{'country'}{$country} = 1;
+                        }
+                    }
+                }
+
+                update_wp_channel_availability($chan_href);
+
+                push @unsorted_channels, $chan_href;
+            }
+        }
+    }
+    #now sort the channels into a list, ordered by channel number
+    my @sorted_channels = sort { $a->{'num'} <=> $b->{'num'} } @unsorted_channels;
+
+    # store a cached copy of the data
+    $filtered_wp_channels{$WP_URL} = \@sorted_channels;
+
+    return \@sorted_channels;
+}
+
+# Retrieve a given TV platform EPG listing from Wikipedia and process all
+# channel tables, returning a sorted list (in EPG num order) of channel
+# references for all channels.
+#
+sub get_unfiltered_wp_channels {
+
+    my $WP_URL = shift;
+
+    # return a cached copy of the data if it has already been processed
+    return $unfiltered_wp_channels{$WP_URL} if defined $unfiltered_wp_channels{$WP_URL};
+
+    my $page = get_tree($WP_URL);
+    if (!defined $page) {
+        croak "Error: Could not retrieve listings page from Wikipedia!\n    $WP_URL";
+    }
+
+    # First process the page to extract channel tables and any details of
+    # regional/national variations
+    my @epg_sections; # hold list of sections as page is processed
+
+    SECTION:
+    foreach my $h3 ( $page->look_down('_tag', 'h3') ) {
+        my $section_node = $h3->look_down('_tag', 'span', 'class', 'mw-headline');
+        my $section_name = defined $section_node->as_text() ? $section_node->as_text() : 'Unknown';
+        # ignore unknown or future events sections
+        next SECTION if ($section_name =~ m/20\d\d/ || $section_name =~ m/Unknown/i);
+
+        # list to store anon list of variation and table
+        my @section_variations;
+
+        # the table for each epg section is below an h3 tag
+        my $variation = 'Default';
+        my $found_variation = 0;
+
+        my $curr_node = $h3->right();
+        while ( defined $curr_node && $curr_node->tag() ne 'h3' ) {
+
+            # try to spot national/regional variations table found under h4 tag
+            if ($curr_node->tag() eq 'h4') {
+                my $variation_node = $curr_node->look_down('_tag', 'span', 'class', 'mw-headline');
+                ($variation) = $variation_node->as_text() =~ m/^.*:\s*(.*)\s+variation/i;
+                if (defined $variation) {
+                    $found_variation = 1;
+                }
+            }
+
+            elsif ($curr_node->tag() eq 'table') {
+                TABLE:
+                foreach my $chan_tbl ( $curr_node->look_down('_tag', 'table') ) {
+                    # check this is a channel table
+                    my @tbl_headers = $chan_tbl->look_down('_tag', 'th');
+                    if ($tbl_headers[0]->as_text() =~ /EPG No/i && $tbl_headers[-1]->as_text() !~ /removed/i) {
+
+                        # process the channel table
+                        my $channels_aref = process_channel_table( $section_name, $chan_tbl);
+
+                        # we should now have a variation name and a listref of channels to store
+                        push @section_variations, [$variation, $channels_aref];
+                        # reset variation vars
+                        $variation = 'Default';
+                        $found_variation = 0;
+                    }
+                }
+            }
+
+            $curr_node = $curr_node->right();
+        }
+
+        push @epg_sections, [ $section_name, \@section_variations,];
+    }
+
+    $page->delete(); undef $page;
+
+    # store a cached copy of the data
+    $unfiltered_wp_channels{$WP_URL} = \@epg_sections;
+
+    return \@epg_sections;
+}
+
+# Process a table of channels from an EPG. Return a list of channel refs
+# in the order they were processed (usually EPG order), or undef if that table
+# is not a list of suitable channels
+#
+# As of 2011-03-10:
+# Sky:      TV - 7 fields, Radio - 5 fields, no list of removed channels
+# VirginTV: TV - 8 fields, Radio - 8 fields, list of removed channels (5 fields, last field "Date removed")
+# Freeview: TV - 8 fields, Radio - 7 fields, list of removed channels (5 fields, last field "Date removed")
+# Freesat:  TV - 7 fields, Radio - 6 fields, list of removed channels (6 fields, last field "Date removed")
+# UPC:      TV - 7 fields, Radio - 6 fields, no list of removed channels
+#
+sub process_channel_table {
+
+    my $epg_section  = shift;
+    my $chan_tbl     = shift;
+
+    my @headers = $chan_tbl->look_down('_tag', 'th');
+
+    # require min of 5 fields
+    return undef if (scalar @headers < 5);
+    # do not process tables of removed channels
+    return undef if ($headers[-1] =~ m/date removed/i);
+
+    # iterate over available header cells and store column ordering
+    my %COL_ID;
+    for (my $i = 0; $i < @headers; $i++) {
+        $headers[$i]->as_trimmed_text() =~ m/epg/i              ? $COL_ID{'num'}         = $i :
+        $headers[$i]->as_trimmed_text() =~ m/name/i             ? $COL_ID{'name'}        = $i :
+        $headers[$i]->as_trimmed_text() =~ m/notes/i            ? $COL_ID{'notes'}       = $i :
+        $headers[$i]->as_trimmed_text() =~ m/owner/i            ? $COL_ID{'owner'}       = $i :
+        $headers[$i]->as_trimmed_text() =~ m/broadcast.*hours/i ? $COL_ID{'hours'}       = $i :
+        $headers[$i]->as_trimmed_text() =~ m/multiplex/i        ? $COL_ID{'multiplex'}   = $i :
+        $headers[$i]->as_trimmed_text() =~ m/(package|size)/i   ? $COL_ID{'package'}     = $i :
+        $headers[$i]->as_trimmed_text() =~ m/format/i           ? $COL_ID{'format'}      = $i :
+        $headers[$i]->as_trimmed_text() =~ m/launch\s+date/i    ? $COL_ID{'launch_date'} = $i :
+                                                                  next;
+    }
+
+    return undef if !exists $COL_ID{'num'};
+    return undef if !exists $COL_ID{'name'};
+
+    my @channels;
+
+    CHANNEL:
+    foreach my $chan_row ( $chan_tbl->look_down('_tag', 'tr') ) {
+        # ignore header row
+        next CHANNEL if ( $chan_row->look_down('_tag', 'th') );
+        # standard first 4 columns for all lists (as of 2011-02-09):
+        #
+        # 1) EPG No.
+        # 2) Channel Name
+        # 3) Notes
+        # 4) Owner/parent company
+        #
+        # additional fields which may or may not be present in all lists
+        # ) Broadcast hours
+        # ) Multiplex
+        # ) Encryption/Package / TV Size
+        # ) Format / Broadcast format
+        # ) Launch date
+        #
+        my @chan_fields = $chan_row->look_down('_tag', 'td');
+
+        my %channel;
+
+        if (defined $epg_section) {
+            $channel{'epg_section'} = $epg_section;
+        }
+        if ( exists $COL_ID{'num'} && !$chan_fields[$COL_ID{'num'}]->is_empty() ) {
+            $channel{'num'} = $chan_fields[$COL_ID{'num'}]->as_trimmed_text();
+        }
+        if ( exists $COL_ID{'name'} && !$chan_fields[$COL_ID{'name'}]->is_empty() ) {
+            $channel{'name'} = decode_utf8( $chan_fields[$COL_ID{'name'}]->as_trimmed_text() );
+        }
+        if ( exists $COL_ID{'notes'} && !$chan_fields[$COL_ID{'notes'}]->is_empty() ) {
+            $channel{'notes'} = $chan_fields[$COL_ID{'notes'}]->as_trimmed_text();
+        }
+        if ( exists $COL_ID{'owner'} && !$chan_fields[$COL_ID{'owner'}]->is_empty() ) {
+            $channel{'owner'} = $chan_fields[$COL_ID{'owner'}]->as_trimmed_text();
+        }
+        if ( exists $COL_ID{'hours'} && !$chan_fields[$COL_ID{'hours'}]->is_empty() ) {
+            $channel{'hours'} = $chan_fields[$COL_ID{'hours'}]->as_trimmed_text();
+        }
+        if ( exists $COL_ID{'multiplex'} && !$chan_fields[$COL_ID{'multiplex'}]->is_empty() ) {
+            $channel{'multiplex'} = $chan_fields[$COL_ID{'multiplex'}]->as_trimmed_text();
+        }
+        if ( exists $COL_ID{'package'} && !$chan_fields[$COL_ID{'package'}]->is_empty() ) {
+            $channel{'package'} = $chan_fields[$COL_ID{'package'}]->as_trimmed_text();
+        }
+        if ( exists $COL_ID{'format'} && !$chan_fields[$COL_ID{'format'}]->is_empty() ) {
+            $channel{'format'} = $chan_fields[$COL_ID{'format'}]->as_trimmed_text();
+        }
+        if ( exists $COL_ID{'launch_date'} && !$chan_fields[$COL_ID{'launch_date'}]->is_empty() ) {
+            $channel{'launch_date'} = $chan_fields[$COL_ID{'launch_date'}]->as_trimmed_text();
+        }
+
+        # flag HDTV/SDTV/radio channels where information available
+        # radio stations may not have a package or format column
+        if (defined $channel{'format'}) {
+            $channel{'hdtv'}    = 1       if ($channel{'format'} =~ m/hdtv/i);
+            $channel{'hdtv'}    = 0       if ($channel{'format'} =~ m/sdtv/i);
+            $channel{'aspect'}  = '16:9'  if ($channel{'format'} =~ m/1080/i);
+            $channel{'aspect'}  = '16:9'  if ($channel{'format'} =~ m/16:9/i);
+            $channel{'aspect'}  = '4:3'   if ($channel{'format'} =~ m/4:3/i);
+            $channel{'format'}  = 'TV'    if ($channel{'format'} =~ m/tv/i);
+            $channel{'format'}  = 'Radio' if ($channel{'format'} =~ m/radio/i);
+            $channel{'format'}  = 'Radio' if ($channel{'format'} =~ m/(stereo|mono|kbit)/i);
+        }
+        else {
+            $channel{'format'}  = 'Radio';
+        }
+
+        if ( !exists $channel{'package'} ) {
+            $channel{'package'} = 'Free-to-air';
+        }
+
+        # remove WP citation reference text
+        %channel = %{ remove_citations(\%channel) };
+
+        # remember TV (not radio) channel names to check coverage of XMLTV channel listings
+        # Do this before we reject channels based on postcode location
+        $wp_chan_names{ $channel{'name'} } = $channel{'name'}
+                if (exists $channel{'format'} && $channel{'format'} !~ m/Radio/i);
+
+        push @channels, \%channel;
+    }
+
+    return \@channels;
+}
+
+# A bit hacky and fragile, but check the notes field for all channels listed on Wikipedia channel
+# list to determine their availability nationally and locally.
+#
+sub update_wp_channel_availability {
+    my $channel_href = shift;
+    # ignore channels which are corrected later with specific postcode/country details
+    # we use the WP names, not the corrected channel name used in output
+    return if !exists $channel_href->{'notes'};
+    return if ($channel_href->{'name'} =~ m/^BBC One/i);
+    return if ($channel_href->{'name'} =~ m/^BBC Two/i);
+    return if ($channel_href->{'name'} =~ m/^ITV$/i);
+    return if ($channel_href->{'name'} =~ m/^ITV (\+1|HD)$/i);
+    return if ($channel_href->{'name'} =~ m/^ITV1 (\+1|HD)$/i);
+
+    print STDERR "Checking '$channel_href->{'name'}' for national/regional availability...\n" if $debug;
+
+    if ($channel_href->{'notes'} =~ m/^England, Northern Ireland, Scotland only/i) {
+        $channel_href->{'availability'}{'country'}{'England'} = 1;
+        $channel_href->{'availability'}{'country'}{'Northern Ireland'} = 1;
+        $channel_href->{'availability'}{'country'}{'Scotland'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^England, Scotland, Wales only/i) {
+        $channel_href->{'availability'}{'country'}{'England'} = 1;
+        $channel_href->{'availability'}{'country'}{'Scotland'} = 1;
+        $channel_href->{'availability'}{'country'}{'Wales'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/England, Wales and Scottish Borders only/i) {
+        $channel_href->{'availability'}{'country'}{'England'} = 1;
+        $channel_href->{'availability'}{'country'}{'Scotland'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^England only/i) {
+        $channel_href->{'availability'}{'country'}{'England'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^Northern Ireland only/i) {
+        $channel_href->{'availability'}{'country'}{'Northern Ireland'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/(^Scotland|\. Scotland) only/i) {
+        $channel_href->{'availability'}{'country'}{'Scotland'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/(^Wales only|Wales only\.$)/i ) {
+        $channel_href->{'availability'}{'country'}{'Wales'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^Except Wales/i) {
+        $channel_href->{'availability'}{'country'}{'England'} = 1;
+        $channel_href->{'availability'}{'country'}{'Northern Ireland'} = 1;
+        $channel_href->{'availability'}{'country'}{'Scotland'} = 1;
+        $channel_href->{'availability'}{'country'}{'Ireland'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^Not available in the Republic of Ireland\./i) {
+        $channel_href->{'availability'}{'country'}{'England'} = 1;
+        $channel_href->{'availability'}{'country'}{'Northern Ireland'} = 1;
+        $channel_href->{'availability'}{'country'}{'Scotland'} = 1;
+        $channel_href->{'availability'}{'country'}{'Wales'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^Manchester only/i ) {
+        $channel_href->{'availability'}{'postcode'} = 'M1,M12,M13,M14,M15,M16,M17,M18,M19,M2,M20,M21,M22,M23,M24,M25,M26,M27,M28,M29,M3,M30,M31,M32,M33,M34,M35,M38,M40,M41,M43,M44,M45,M46,M5,M50,M6,M60,M7,M8,M9';
+    }
+    elsif ($channel_href->{'notes'} =~ m/^Grimsby & Scunthorpe only/i) {
+        $channel_href->{'availability'}{'postcode'} = 'DN15,DN16,DN17,DN31,DN32,DN33,DN34';
+    }
+    elsif ($channel_href->{'notes'} =~ m/Leicester only/i) {
+        $channel_href->{'availability'}{'city'}{'Leicester'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^London only/i) {
+        $channel_href->{'availability'}{'city'}{'London'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/Not on EPG outside London/i) {
+        $channel_href->{'availability'}{'city'}{'London'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^In Dublin only/i ) {
+        $channel_href->{'availability'}{'city'}{'Dublin'} = 1;
+    }
+    elsif ($channel_href->{'notes'} =~ m/^In Cork only/i ) {
+        $channel_href->{'availability'}{'city'}{'Cork'} = 1;
+    }
+
+    return $channel_href;
+}
+
+# Process a listref of channel hashrefs and check that all channels having
+# the same epg number have availability information to allow them to be
+# filtered by location into an epg-num unique list. Returns the listref
+# with updated availability information where necessary
+#
+sub update_variation_channel_availability {
+
+    my $channels_aref = shift;
+
+    # store channels in a listref keyed against epgnum
+    my %channels;
+    foreach my $chan_href (@{$channels_aref}) {
+        push @{$channels{$chan_href->{'num'}}}, $chan_href;
+    }
+
+    CHAN_LIST:
+    foreach my $epg_num (sort keys %channels) {
+        my $list_size = scalar @{$channels{$epg_num}};
+        next CHAN_LIST if $list_size == 1;
+
+        my %def_country_avail = ( 'England'  => 1,
+                                  'Scotland' => 1,
+                                  'Wales'    => 1,
+                                  'Northern Ireland' => 1,
+                                  'Ireland'  => 1, );
+
+        # first iteration establishes which countries have been seen
+        foreach my $chan_href (@{$channels{$epg_num}}) {
+            foreach my $country (keys %def_country_avail) {
+                if ( check_hash( $chan_href, ('availability', 'country', $country)) ) {
+                    delete $def_country_avail{$country};
+                }
+            }
+        }
+        # second iteration updates channels lacking availability information
+        # with details of those countries not seen during first iteration
+        foreach my $chan_href (@{$channels{$epg_num}}) {
+            if (! check_hash( $chan_href, ('availability', 'country',)) ) {
+                foreach my $country (keys %def_country_avail) {
+                    $chan_href->{'availability'}{'country'}{$country} = 1;
+                }
+            }
+        }
+    }
+
+    return $channels_aref;
+}
+
+#*****************************************************************************
+#                                  Freesat                                   *
+#*****************************************************************************
+
+# Freesat is entirely FTA, so no specific packages
+# Exclude HD channels for regular Freesat
+#
+sub get_filtered_freesat_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} eq 'Radio' && !$radio );
+        # skip text channels
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Text service/i );
+
+        # determine if channel is flagged as FTA
+        if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        # Otherwise, ignore it
+        else {
+            next CHAN;
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_chans_aref = &replace_regional_channels(\@filt_chans);
+
+    return $filt_chans_aref;
+}
+
+# Freesat is entirely FTA, so no specific packages
+# Include HD channels for FreesatHD
+#
+sub get_filtered_freesathd_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip SDTV/HDTV channels if not requested
+        next CHAN if ( exists $chan_href->{'hdtv'  } &&  $chan_href->{'hdtv'  } && !$hdtv );
+        next CHAN if ( exists $chan_href->{'hdtv'  } && !$chan_href->{'hdtv'  } && !$sdtv );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} eq 'Radio' && !$radio );
+        # skip text channels
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Text service/i );
+
+        # determine if channel is flagged as FTA
+        if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        # Otherwise, ignore it
+        else {
+            next CHAN;
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_chans_aref = &replace_regional_channels(\@filt_chans);
+
+    return $filt_chans_aref;
+}
+
+#*****************************************************************************
+#                                  Freeview                                  *
+#*****************************************************************************
+
+# Freeview has nightly PPV channels. TopupTV is a separate service
+#
+sub get_filtered_freeview_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip data and TuTV services that are hidden
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Data Service/i );
+        next CHAN if ( $chan_href->{'name'} =~ m/TopUp Anytime/i );
+
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} eq 'Radio' && !$radio );
+        # skip text channels
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Text service/i );
+
+        # determine if channel is flagged as FTA
+        if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Pay-per-view$/i) {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+        # Otherwise, ignore it
+        else {
+            next CHAN;
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_chans_aref = &replace_regional_channels(\@filt_chans);
+
+    return $filt_chans_aref;
+}
+
+# FreeviewHD has HD and nightly PPV channels.
+#
+sub get_filtered_freeviewhd_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip data and TuTV services that are hidden
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Data Service/i );
+        next CHAN if ( $chan_href->{'name'} =~ m/TopUp Anytime/i );
+
+        # skip SDTV/HDTV channels if not requested
+        next CHAN if ( exists $chan_href->{'hdtv'  } &&  $chan_href->{'hdtv'  } && !$hdtv );
+        next CHAN if ( exists $chan_href->{'hdtv'  } && !$chan_href->{'hdtv'  } && !$sdtv );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} eq 'Radio' && !$radio );
+        # skip text channels
+        next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Text service/i );
+
+        # determine if channel is flagged as FTA
+        if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Pay-per-view$/i) {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+        # Otherwise, ignore it
+        else {
+            next CHAN;
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_chans_aref = &replace_regional_channels(\@filt_chans);
+
+    return $filt_chans_aref;
+}
+
+#*****************************************************************************
+#                                Saorview                                    *
+#*****************************************************************************
+
+# Saorview has SD and HD FTA channels
+#
+sub get_filtered_saorview_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip SDTV/HDTV channels if not requested
+        next CHAN if ( exists $chan_href->{'hdtv'  } &&  $chan_href->{'hdtv'  } && !$hdtv );
+        next CHAN if ( exists $chan_href->{'hdtv'  } && !$chan_href->{'hdtv'  } && !$sdtv );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
+
+        $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+
+        push(@filt_chans, $chan_href);
+    }
+
+    return \@filt_chans;
+}
+
+#*****************************************************************************
+#                                  Sky                                       *
+#*****************************************************************************
+
+# Sky has premium channels available as subscriptions, and nightly PPV channels.
+# Subscription HD channels require the HD Pack
+#
+sub get_filtered_sky_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    $unfilt_chans_aref = update_variation_channel_availability($unfilt_chans_aref);
+
+    my @filt_tv_chans;    # tv uses 3 digit channel numbering
+    my @filt_radio_chans; # radio uses 4 digit channel numbering w/leading zero
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # ignore channels for commercial/licensed premised
+        next CHAN if ( exists $chan_href->{'notes' } &&  $chan_href->{'notes' } =~ m/(Commercial|Licensed) premises/i );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  ($chan_href->{'format'} eq 'Radio') && !$radio );
+        # ignore the dozens of PPV Sky Box Office channels
+        next CHAN if ($chan_href->{'name'} =~ m/^Sky Movies Box Office/i && $chan_href->{'package'} =~ m/Pay-per-view/i);
+
+        # determine which package(s) a channel is available in
+        if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Free-to-view$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-view'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Bonus Pack$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        # Otherwise, just output the package name
+        else {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+
+        if ($chan_href->{'num'} =~ m/^\d{3}$/) {
+            push(@filt_tv_chans, $chan_href);
+            next CHAN;
+        }
+        elsif ($chan_href->{'num'} =~ m/^\d{4}$/) {
+            push(@filt_radio_chans, $chan_href);
+            next CHAN;
+        }
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_tv_chans_aref = &replace_regional_channels(\@filt_tv_chans);
+
+    # handle radio channels having 4 digit channums (and leading zero) which would
+    # otherwise get sorted inbetween regular TV channels
+    my @filt_chans = (@{$filt_tv_chans_aref}, @filt_radio_chans);
+
+    return \@filt_chans;
+}
+
+# SkyHD has premium channels available as subscriptions, and nightly PPV channels.
+# Subscription HD channels require the HD Pack
+#
+sub get_filtered_skyhd_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    $unfilt_chans_aref = update_variation_channel_availability($unfilt_chans_aref);
+
+    my @filt_tv_chans;    # tv uses 3 digit channel numbering
+    my @filt_radio_chans; # radio uses 4 digit channel numbering w/leading zero
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip SDTV/HDTV channels if not requested
+        next CHAN if ( exists $chan_href->{'hdtv'  } &&  $chan_href->{'hdtv'  } && !$hdtv );
+        next CHAN if ( exists $chan_href->{'hdtv'  } && !$chan_href->{'hdtv'  } && !$sdtv );
+        # ignore channels for commercial/licensed premised
+        next CHAN if ( exists $chan_href->{'notes' } &&  $chan_href->{'notes' } =~ m/(Commercial|Licensed) premises/i );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  ($chan_href->{'format'} eq 'Radio') && !$radio );
+        # ignore the dozens of PPV Sky Box Office channels
+        next CHAN if ($chan_href->{'name'} =~ m/^Sky Movies Box Office/i && $chan_href->{'package'} =~ m/Pay-per-view/i);
+
+        # determine which package(s) a channel is available in
+        if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Free-to-view$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-view'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Bonus Pack$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        # Otherwise, just output the package name
+        else {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+
+        if ($chan_href->{'num'} =~ m/^\d{3}$/) {
+            push(@filt_tv_chans, $chan_href);
+            next CHAN;
+        }
+        elsif ($chan_href->{'num'} =~ m/^\d{4}$/) {
+            push(@filt_radio_chans, $chan_href);
+            next CHAN;
+        }
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_tv_chans_aref = &replace_regional_channels(\@filt_tv_chans);
+
+    # handle HD channel swaps on SkyHD
+    foreach my $chan_href (@$filt_tv_chans_aref) {
+        if (exists $chan_href->{'notes'} && $chan_href->{'notes'} =~ m/HD swap with channel\s+(\d+)/i) {
+            # update notes to refer to old epg num and update num to new epg position
+            $chan_href->{'notes'  } =~ s/HD swap with channel\s+(\d+)/HD swap with channel $chan_href->{'num'}/gi;
+            $chan_href->{'num'    } = $1;
+        }
+    }
+    @filt_tv_chans = sort { $a->{'num'} <=> $b->{'num'} } @$filt_tv_chans_aref;
+
+    # handle radio channels having 4 digit channums (and leading zero) which would
+    # otherwise get sorted inbetween regular TV channels
+    my @filt_chans = (@filt_tv_chans, @filt_radio_chans);
+
+    return \@filt_chans;
+}
+
+# Freesat from Sky uses a Sky digibox/viewing card in order to receive FTV
+# channels in addition to FTA channels available on Freesat. Incude
+# FTA HD channels by default here
+#
+sub get_filtered_freesatfromsky_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    $unfilt_chans_aref = update_variation_channel_availability($unfilt_chans_aref);
+
+    my @filt_tv_chans;    # tv uses 3 digit channel numbering
+    my @filt_radio_chans; # radio uses 4 digit channel numbering w/leading zero
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip SDTV/HDTV channels if not requested
+        next CHAN if ( exists $chan_href->{'hdtv'  } &&  $chan_href->{'hdtv'  } && !$hdtv );
+        next CHAN if ( exists $chan_href->{'hdtv'  } && !$chan_href->{'hdtv'  } && !$sdtv );
+        # ignore channels for commercial/licensed premised
+        next CHAN if ( exists $chan_href->{'notes' } &&  $chan_href->{'notes' } =~ m/(Commercial|Licensed) premises/i );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
+        # ignore the dozens of PPV Sky Box Office channels
+        next CHAN if ($chan_href->{'name'} =~ m/^Sky Movies Box Office/i && $chan_href->{'package'} =~ m/Pay-per-view/i);
+
+        # determine which package(s) a channel is available in
+        if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Free-to-view$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-view'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Bonus Pack$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Free-to-air'], };
+        }
+        # Otherwise, just output the package name
+        else {
+            next CHAN;;
+        }
+
+        if ($chan_href->{'num'} =~ m/^\d{3}$/) {
+            push(@filt_tv_chans, $chan_href);
+            next CHAN;
+        }
+        elsif ($chan_href->{'num'} =~ m/^\d{4}$/) {
+            push(@filt_radio_chans, $chan_href);
+            next CHAN;
+        }
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_tv_chans_aref = &replace_regional_channels(\@filt_tv_chans);
+
+    # handle radio channels having 4 digit channums (and leading zero) which would
+    # otherwise get sorted inbetween regular TV channels
+    my @filt_chans = (@{$filt_tv_chans_aref}, @filt_radio_chans);
+
+    return \@filt_chans;
+}
+
+#*****************************************************************************
+#                               UPC Ireland                                  *
+#*****************************************************************************
+
+# UPC Ireland has premium channels available as subscriptions, and nightly PPV channels
+# No HD channels are available without using the Digital+ STB
+#
+sub get_filtered_upcireland_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
+
+        # determine which base package(s) a channel is available in
+        if ($chan_href->{'package'} =~ m/^Value$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Value', 'Select', 'Select Extra', 'Max'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Select$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Select', 'Select Extra', 'Max'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Select Extra$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Select Extra', 'Max'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Max$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Max'], };
+        }
+        # Otherwise, just output the package name
+        else {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    return \@filt_chans;
+}
+
+# UPC Ireland HD has premium channels available as subscriptions, and nightly PPV channels
+#
+sub get_filtered_upcirelandhd_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip SDTV/HDTV channels if not requested
+        next CHAN if ( exists $chan_href->{'hdtv'  } &&  $chan_href->{'hdtv'  } && !$hdtv );
+        next CHAN if ( exists $chan_href->{'hdtv'  } && !$chan_href->{'hdtv'  } && !$sdtv );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
+
+        # determine which base package(s) a channel is available in
+        if ($chan_href->{'package'} =~ m/^Value$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Value', 'Select', 'Select Extra', 'Max'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Select$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Select', 'Select Extra', 'Max'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Select Extra$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Select Extra', 'Max'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^Max$/i) {
+            $chan_href->{'package'} = { 'basic' => ['Max'], };
+        }
+        # Otherwise, just output the package name
+        else {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    return \@filt_chans;
+}
+
+#*****************************************************************************
+#                                  VirginTV                                  *
+#*****************************************************************************
+
+# VirginTV has premium channels available as subscriptions, and nightly PPV channels
+# No HD channels are available without using the Virgin HDTV service/STB
+#
+sub get_filtered_virgin_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
+
+        # one-off packages fixups for subscription channels
+        if (exists $lineup_config{$platform}->{'packages'}{ $chan_href->{'name'} }) {
+            $chan_href->{'package'} = $lineup_config{$platform}->{'packages'}{ $chan_href->{'name'} };
+        }
+        # otherwise determine which base package(s) a channel is available in
+        elsif ($chan_href->{'package'} =~ m/^M$/i) {
+            $chan_href->{'package'} = { 'basic' => ['M', 'M+', 'L', 'XL'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^M\+$/i) {
+            $chan_href->{'package'} = { 'basic' => ['M+', 'L', 'XL'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^L$/i) {
+            $chan_href->{'package'} = { 'basic' => ['L', 'XL'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^XL$/i) {
+            $chan_href->{'package'} = { 'basic' => ['XL'], };
+        }
+        # Otherwise, just output the package name
+        else {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_chans_aref = &replace_regional_channels(\@filt_chans);
+    # update XMLTV IDs for specific channels not matched by name
+    $filt_chans_aref = &update_specific_channels($filt_chans_aref);
+
+    return $filt_chans_aref;
+}
+
+# VirginTV HD has premium channels available as subscriptions, and nightly PPV channels
+#
+sub get_filtered_virginhd_channels {
+    my $unfilt_chans_aref = get_channels_for_platform();
+    my @filt_chans;
+
+    CHAN:
+    foreach my $chan_href (@$unfilt_chans_aref) {
+        # skip SDTV/HDTV channels if not requested
+        next CHAN if ( exists $chan_href->{'hdtv'  } &&  $chan_href->{'hdtv'  } && !$hdtv );
+        next CHAN if ( exists $chan_href->{'hdtv'  } && !$chan_href->{'hdtv'  } && !$sdtv );
+        # skip radio channels if not requested
+        next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
+
+        # determine which base package(s) a channel is available in
+        if ($chan_href->{'package'} =~ m/^M$/i) {
+            $chan_href->{'package'} = { 'basic' => ['M', 'M+', 'L', 'XL'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^M\+$/i) {
+            $chan_href->{'package'} = { 'basic' => ['M+', 'L', 'XL'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^L$/i) {
+            $chan_href->{'package'} = { 'basic' => ['L', 'XL'], };
+        }
+        elsif ($chan_href->{'package'} =~ m/^XL$/i) {
+            $chan_href->{'package'} = { 'basic' => ['XL'], };
+        }
+        # Otherwise, just output the package name
+        else {
+            $chan_href->{'package'} = { 'subscription' => [ $chan_href->{'package'} ], };
+        }
+
+        push(@filt_chans, $chan_href);
+    }
+
+    # handle regional BBC/ITV channels based on configured postcode
+    my $filt_chans_aref = &replace_regional_channels(\@filt_chans);
+    # update XMLTV IDs for specific channels not matched by name
+    $filt_chans_aref = &update_specific_channels($filt_chans_aref);
+
+    return $filt_chans_aref;
+}
+
+#*****************************************************************************
+#                     subs imported from tv_grab_uk_rt                       *
+#*****************************************************************************
+
+# Adapted from core tv_grab_uk_rt code
+#
+sub get_xmltv_channels {
+    # Retrieve grabber's channel_ids file via XMLTV::Supplement
+    my $xmltv_channel_ids = GetSupplement("tv_grab_uk_rt", 'channel_ids');
+
+    croak "Error: XMLTV channel_ids data is missing, exiting"
+        if (!defined $xmltv_channel_ids || $xmltv_channel_ids eq '');
+
+    $xmltv_channel_ids = decode_utf8($xmltv_channel_ids);
+
+    # Reciprocal XMLTV/RT ID hashes for the required channel_ids fields, allowing
+    # RT ID -> XMLTV ID and XMLTV ID -> RT ID lookups
+    my (%rt_to_xmltv, %xmltv_to_rt);
+
+    # Hashes for the optional channel_ids fields, keyed by XMLTV ID
+    my (%extra_dn, %icon_urls, %channel_offset, %broadcast_hours, %video_quality);
+
+    my @lines = split /[\n\r]+/, $xmltv_channel_ids;
+
+    XMLTV_CHANID_ENTRY:
+    foreach my $line (@lines) {
+        # Skip blank lines. Comments are allowed if they are at the start
+        # of the line.
+        next XMLTV_CHANID_ENTRY if ($line =~ m/^#/ || $line =~ m/^$/);
+        my @fields = split /\|/, $line;
+        # We need at least 2 fields (xmltv_id,rt_id) to run the grabber.
+        # No check on maximum number of fields to support future updates
+        # to channel_ids now we are using XMLTV::Supplement.
+        if (scalar @fields < 2) {
+            print STDERR "Wrong number of fields in XMLTV channel_ids entry:\n"
+                    . "\t" . $line;
+            next XMLTV_CHANID_ENTRY;
+        }
+
+        # The channel_ids fields are:
+        # 1) XMLTV ID
+        # 2) RT ID
+        # 3) Channel name
+        # 4) Channel icon URL
+        # 5) Timeshift offset
+        # 6) Broadcast hours
+        # 7) Video quality
+        #
+        # The RT channels.dat provides a channel name, but it may be out of
+        # date - here we provide an alternative or updated name if the
+        # channel name has changed
+        my ($xmltv_id, $rt_id,          $extra_dn,
+            $icon_url, $channel_offset, $broadcast_hours,
+            $video_quality) = @fields;
+
+        # Flag timeshifted and part-time channels for stats
+        my ($is_timeshift, $is_parttime);
+
+        # Check for required XMLTV ID and RT ID fields, skip if missing
+        if (!defined $xmltv_id  || $xmltv_id eq '') {
+            next XMLTV_CHANID_ENTRY;
+        }
+        if ($xmltv_id !~ m/\w+\.\w+.*/) {
+            next XMLTV_CHANID_ENTRY;
+        }
+        if (!defined $rt_id || $rt_id eq '') {
+            next XMLTV_CHANID_ENTRY;
+        }
+        if ($rt_id !~ m/^\d+$/) {
+            next XMLTV_CHANID_ENTRY;
+        }
+
+        # Check for duplicate RT IDs having same associated XMLTV ID. As part of
+        # timeshifted/part-time channel support, we associate the same RT ID
+        # with different XMLTV IDs
+        foreach my $id (@{$rt_to_xmltv{$rt_id}}) {
+            if (defined $id && $id eq $xmltv_id) {
+                next XMLTV_CHANID_ENTRY;
+            }
+        }
+
+        # Check whether current XMLTV ID has already been seen
+        if (defined $xmltv_to_rt{$xmltv_id}) {
+            next XMLTV_CHANID_ENTRY;
+        }
+
+        # Store the XMLTV channel description, report if it is missing
+        if (defined $extra_dn) {
+            if ($extra_dn eq '' || $extra_dn !~ m/\w+/) {
+                $extra_dn = undef;
+            }
+            else {
+                $extra_dn{$xmltv_id} = $extra_dn;
+            }
+        }
+
+        # Check for channel icon
+        if (defined $icon_url) {
+            if ($icon_url eq '' || $icon_url !~ m/^http/) {
+                $icon_url = undef;
+            }
+            else {
+                $icon_urls{$xmltv_id} = $icon_url;
+            }
+        }
+
+        # Check for valid timeshift offset
+        if (defined $channel_offset) {
+            if ($channel_offset eq '' || $channel_offset !~ m/^(\+|\-)/) {
+                $channel_offset = undef;
+            }
+            else {
+                $channel_offset{$xmltv_id} = $channel_offset;
+            }
+        }
+
+        # Check for correct broadcast hours format (HHMM-HHMM)
+        if (defined $broadcast_hours) {
+            if ($broadcast_hours eq '' || $broadcast_hours !~ m/\d{4}-\d{4}/) {
+                $broadcast_hours = undef;
+            }
+            else {
+                $broadcast_hours{$xmltv_id} = $broadcast_hours;
+            }
+        }
+
+        # Check for presence of video quality information (SDTV or HDTV)
+        if (defined $video_quality) {
+            if ($video_quality eq '' || $video_quality !~ m/SDTV|HDTV/) {
+                $video_quality = undef;
+            }
+            else {
+                $video_quality{$xmltv_id} = $video_quality;
+            }
+        }
+
+        # Handle multiple XMLTV IDs associated with a single RT ID. Required
+        # after introduction of timeshifted and part-time channel support,
+        # which map multiple XMLTV IDs to a single RT ID.
+        push @{$rt_to_xmltv{$rt_id}}, $xmltv_id;
+        $xmltv_to_rt{$xmltv_id} = $rt_id;
+
+    }
+    # channel_ids processing finished
+
+    # Read in the Radio Times channels.dat file, which is supplied in UTF-8
+    # format. We process the list of available channels and check for
+    # presence of duplicate IDs or names.
+    #
+    # Grab the octets
+    my $rt_channels_dat = get_octets( $RT_CHANNELS_URL );
+
+    croak "Error: Radio Times channels.dat data is missing, exiting\n"
+        . "Please check $RT_CHANNELS_URL"
+        if (!defined $rt_channels_dat || $rt_channels_dat eq '');
+
+    # Decode source UTF-8 octets, and process for HTML entities
+    $rt_channels_dat = decode_utf8($rt_channels_dat);
+    decode_entities($rt_channels_dat);
+
+    my @rt_channels = split /\n/, $rt_channels_dat;
+    my $num_rt_channels = scalar @rt_channels;
+
+    # Hash to store details for <channel> elements
+    my %channels;
+    my (%seen_rt_id, %seen_name);
+    my $num_good_rt_channels = 0;
+    my $to_say = "";
+
+    RT_CHANDAT_ENTRY:
+    foreach my $rt_channel (@rt_channels) {
+        chomp $rt_channel;
+        # ignore empty line and disclaimer at start of file
+        if ($rt_channel =~ m/^\s*$/ || $rt_channel =~ /^In accessing this XML feed/) {
+            next RT_CHANDAT_ENTRY;
+        }
+
+        if ($rt_channel !~ m/^(\d+)\|(.+)/) {
+            next RT_CHANDAT_ENTRY;
+        }
+
+        my ($rt_id, $rt_name) = ($1, $2);
+        if ($seen_rt_id{$rt_id}++) {
+            next RT_CHANDAT_ENTRY;
+        }
+
+        if ($seen_name{$rt_name}++) {
+            next RT_CHANDAT_ENTRY;
+        }
+
+        # Check whether there is at least one XMLTV ID associated with the RT ID
+        #
+        # If the current RT channel has a known XMLTV ID, check it against known bad
+        # channels and skip it if required. If the channel does not have an
+        # XMLTV ID, create one and continue.
+        #
+        my $xmltv_id = $rt_to_xmltv{$rt_id}[0];
+        if (defined $xmltv_id) {
+            # Skip any RT entries which have been flagged as bad in channel_ids file
+            if ($extra_dn{ $rt_to_xmltv{$rt_id}[0] } =~ m/\(Do\ Not\ Use\)/) {
+                next RT_CHANDAT_ENTRY;
+            }
+        }
+        else {
+            # Handle new channels available on RT site unknown to channel_ids file
+            $to_say .= "Unknown channel '$rt_name'. Will configure as 'C$rt_id.radiotimes.com'\n";
+            push @{$rt_to_xmltv{$rt_id}}, "C$rt_id.radiotimes.com";
+        }
+
+        foreach my $id (@{$rt_to_xmltv{$rt_id}}) {
+            # Use a name for the channel if defined in our channel_ids file,
+            # otherwise use the name supplied by the Radio Times.
+            my @names = ();
+            if (defined $extra_dn{$id}) {
+                @names = ([ $extra_dn{$id} ]);
+            }
+            else {
+                @names = ([ $rt_name ]);
+            }
+
+            # Add a URL for a channel icon if available.
+            my @icon;
+            my $icon_url = $icon_urls{$id};
+            if ($icon_url) {
+                @icon = { 'src' => $icon_url };
+            }
+
+            # Add the channel's details to the %channels hash, adding icon
+            # details if available.
+            if (@icon) {
+                $channels{$id} = {
+                    id             => $id,
+                    rt_id          => $rt_id,
+                    'display-name' => \@names,
+                    'icon'         => \@icon,
+                };
+            }
+            else {
+                $channels{$id} = {
+                    id             => $id,
+                    rt_id          => $rt_id,
+                    'display-name' => \@names,
+                };
+            }
+        }
+        # We have a usable channel definition at this point
+        $num_good_rt_channels++;
+    }
+
+    croak "Error: No usable Radio Times channel definitions available, exiting"
+        if ($num_good_rt_channels < 1);
+
+    # Report any channels listed in channel_ids not seen on the Radio Times
+    # site
+    XMLTV_ID:
+    foreach my $xmltv_id (keys %xmltv_to_rt) {
+        # Ignore channels flagged as bad in channel_ids
+        next XMLTV_ID if ($extra_dn{$xmltv_id} =~ m/.*Do\ Not\ Use.*/);
+        if (!exists $channels{$xmltv_id}) {
+            print STDERR "XMLTV channel '$xmltv_id' ($xmltv_to_rt{$xmltv_id}) "
+               . "not seen on RT site\n";
+        }
+    }
+
+    return \%channels;
+}
+
+#*****************************************************************************
+#               subs acting on data created by tv_grab_uk_rt subs            *
+#*****************************************************************************
+
+# Remove extraneous text in parens from XMLTV channel names:
+#  i) populate global %xmltv_chan_names hash with tidied name
+# ii) add another key to the channels hash and store tidied name
+#
+sub get_tidied_xmltv_channels {
+    my $xmltv_channels_href = get_xmltv_channels();
+    my %keys_to_delete;
+
+    ID:
+    foreach my $id (keys %$xmltv_channels_href) {
+        my $name = $xmltv_channels_href->{$id}{'display-name'}[0][0];
+
+        # remove RT-flagged versions of channels we provide separately and also
+        # skip timeshifted channels from Radio Times to prefer ours
+        if ($name =~ m/\(RT\)/i || $xmltv_channels_href->{$id}{'id'} =~ m/^plus-\d/i) {
+            $keys_to_delete{$id} = $id;
+            next ID;
+        }
+
+        # remove platform/region text in XMLTV name (in square brackets)
+        $name =~ s/\s*\[.*\]\s*$/ /g;
+        # trim leading and trailing whitespace
+        $name =~ s/^\s*//g;
+        $name =~ s/\s*$//g;
+
+        $xmltv_chan_names{$name} = $name;
+        $xmltv_channels_href->{$id}{'tidied-name'} = $name;
+    }
+
+    # delete any unwanted channels from the hash
+    foreach my $id (keys %keys_to_delete) {
+        delete $xmltv_channels_href->{$id};
+    }
+
+    return $xmltv_channels_href;
+}
+
+#FIXME check this sub works correctly for all regions
+#
+# Replace 'placeholder' EPG entries with the various different regional
+# channels for the various BBC1/BBC2/ITV channels
+#
+sub replace_regional_channels {
+    my $channels_aref = shift;
+
+    my $all_channels_aref = [];
+
+    if ( check_hash( \%lineup_config, ($platform, 'regional-handlers') ) ) {
+        print STDERR "$platform has regional handlers available...\n" if $debug;
+        foreach my $chan (@{$channels_aref}) {
+            if ( check_hash( \%lineup_config, ($platform, 'regional-handlers', $chan->{'name'}, $chan->{'num'}) ) ) {
+                print STDERR "  $platform has regional handlers available for channel '$chan->{'name'}' (EPG num: $chan->{'num'})\n" if $debug;
+                foreach my $reg_chan_id (keys %{ $lineup_config{$platform}->{'regional-handlers'}{ $chan->{'name'} }{ $chan->{'num'} } }) {
+                    my %reg_chan = %{$chan}; # copy the 'base' channel and regionalise it
+                    my $reg_chan = \%reg_chan;
+
+                    $reg_chan->{'name'} = $lineup_config{$platform}->{'regional-handlers'}{ $chan->{'name'} }{ $chan->{'num'} }{$reg_chan_id}{'name'};
+                    $reg_chan->{'short-name'} = $lineup_config{$platform}->{'regional-handlers'}{ $chan->{'name'} }{ $chan->{'num'} }{$reg_chan_id}{'short-name'};
+                    $reg_chan->{'xmltvid'} = $reg_chan_id;
+
+                    delete $reg_chan->{'availability'}; # reset postcode/country availability
+
+                    if ( check_hash( \%lineup_config, ($platform, 'regional-handlers', $chan->{'name'}, $chan->{'num'}, $reg_chan_id, 'availability', 'postcode') ) ) {
+                        $reg_chan->{'availability'}{'postcode'} = $lineup_config{$platform}->{'regional-handlers'}{ $chan->{'name'} }{ $chan->{'num'} }{$reg_chan_id}{'availability'}{'postcode'};
+                    }
+                    elsif ( check_hash( \%lineup_config, ($platform, 'regional-handlers', $chan->{'name'}, $chan->{'num'}, $reg_chan_id, 'availability', 'country') ) ) {
+                        foreach my $country (@{ $lineup_config{$platform}->{'regional-handlers'}{ $chan->{'name'} }{ $chan->{'num'} }{$reg_chan_id}{'availability'}{'country'} }) {
+                            $reg_chan->{'availability'}{'country'}{$country} = 1;
+                            #$reg_chan->{'availability'}{'country'}{ $lineup_config{$platform}->{'regional-handlers'}{ $chan->{'name'} }{ $chan->{'num'} }{$reg_chan_id}{'availability'}{'country'} } = 1;
+                        }
+                    }
+
+                    # flag these replaced regional channels as having limited availability
+                    print STDERR "    Adding regional channel '$reg_chan->{'name'}' for platform $platform...\n" if $debug;
+                    push @{$all_channels_aref}, $reg_chan;
+                }
+            }
+            else {
+                push @{$all_channels_aref}, $chan;
+            }
+        }
+    }
+    else {
+        return $channels_aref; # return early if no regionals on this platform
+    }
+
+    return $all_channels_aref;
+}
+
+#FIXME check this sub works correctly for specific channels
+#
+sub update_specific_channels {
+    my $channels_aref = shift;
+
+    if ( check_hash( \%lineup_config, ($platform, 'channel-handlers') ) ) {
+        print STDERR "$platform has specific channel handlers available...\n" if $debug;
+        foreach my $chan (@{$channels_aref}) {
+            if ( check_hash( \%lineup_config, ($platform, 'channel-handlers', $chan->{'name'}, $chan->{'num'}) ) ) {
+                print STDERR "  $platform has specific channel handlers available for channel '$chan->{'name'}' (EPG num: $chan->{'num'})\n" if $debug;
+                $chan->{'xmltvid'} = $lineup_config{$platform}->{'channel-handlers'}{ $chan->{'name'} }{ $chan->{'num'} };
+                print STDERR "    Updating XMLTV ID for specific channel '$chan->{'name'}'...\n" if $debug;
+            }
+        }
+    }
+    else {
+        return $channels_aref; # return early if no regionals on this platform
+    }
+
+    return $channels_aref;
+}
+
+#*****************************************************************************
+#                               DVB mappings                                 *
+#*****************************************************************************
+
+# Retrieve a DVB-XMLTV mapping file from XMLTV Supplement server. This file
+# maps DVB transmitted name, service ID, XMLTV ID and lineup name
+#
+sub get_dvb_lookup_maps {
+
+    if ( ! check_hash( \%lineup_config, ($platform, 'dvb-sid-map') ) ) {
+        return undef;
+    }
+
+    my $DVB_MAP_FILE = $lineup_config{$platform}->{'dvb-sid-map'};
+
+    # Retrieve map file via XMLTV::Supplement
+    my $map = GetSupplement("tv_grab_uk_rt/lineups", $DVB_MAP_FILE);
+
+    croak "Error: XMLTV map file '$DVB_MAP_FILE' is missing, exiting"
+        if (!defined $map || $map eq '');
+
+    $map = decode_utf8($map);
+
+    # hashes to store mappings
+    my %xmltv_id_to_dvb;
+    my %lineup_name_to_dvb;
+
+    my @lines = split /[\n\r]+/, $map;
+
+    MAP_ENTRY:
+    foreach my $line (@lines) {
+        # Skip blank lines. Comments are allowed if they are at the start
+        # of the line.
+        next MAP_ENTRY if ($line =~ m/^#/ || $line =~ m/^$/);
+        my @fields = split /\|/, $line;
+        # We need at least 2 fields (dvb_name, dvb_sid).
+        if (scalar @fields < 2) {
+            print STDERR "Wrong number of fields in XMLTV map file '$DVB_MAP_FILE' entry:\n"
+                    . "\t" . $line;
+            next MAP_ENTRY;
+        }
+
+        # The mapping fields for each channel are:
+        # 1) DVB name
+        # 2) DVB service id
+        # 3) XMLTV ID
+        # 4) Lineup name
+        #
+        # For supported TV channels, the current XMLTV ID is given
+        # For unsupported TV channels, the XMLTV ID is empty
+        #
+        my ($dvb_name, $dvb_sid, $xmltv_id, $lineup_name, ) = @fields;
+
+        # Check for key fields, skip if missing
+        if (!defined $dvb_name || $dvb_name eq '') {
+            next MAP_ENTRY;
+        }
+        if (!defined $dvb_sid || $dvb_sid eq '') {
+            next MAP_ENTRY;
+        }
+        if ($dvb_sid !~ m/^\d+$/) {
+            next MAP_ENTRY;
+        }
+        if (!defined $xmltv_id || $xmltv_id eq '') {
+            $xmltv_id = undef;
+        }
+
+        # Check whether current XMLTV ID has already been seen
+        if (defined $xmltv_id && exists $xmltv_id_to_dvb{$xmltv_id}) {
+            print STDERR "Have already seen XMLTV ID '$xmltv_id', skipping entry...\n" if $debug;
+            print STDERR "  $line\n" if $debug;
+            next MAP_ENTRY;
+        }
+        # Check whether current lineup name has already been seen and this channel
+        # is not supported by XMLTV
+        if (! defined $xmltv_id && exists $lineup_name_to_dvb{$lineup_name}) {
+            print STDERR "Have already seen lineup name '$lineup_name,', skipping entry...\n" if $debug;
+            print STDERR "  $line\n" if $debug;
+            next MAP_ENTRY;
+        }
+
+        # When populating lookup hashes, check for presence of an associated XMLTV ID.
+        # By default all entries in the dvb mapping file will have a lineup name
+        # but not all will be supported by XMLTV. Supported channels are added
+        # to the xmltv_id_to_dvb hash, otherwise to the lineup_name_to_dvb hash.
+        if (defined $xmltv_id) {
+            $xmltv_id_to_dvb{$xmltv_id} = {
+                'dvb-name'    => $dvb_name,
+                'serviceid'   => $dvb_sid,
+                'xmltvid'     => $xmltv_id,
+                'lineup-name' => $lineup_name,
+            };
+        }
+        else {
+            $lineup_name_to_dvb{$lineup_name} = {
+                'dvb-name'    => $dvb_name,
+                'serviceid'   => $dvb_sid,
+                'lineup-name' => $lineup_name,
+            };
+        }
+    }
+
+    # return a listref to both lookup hashes
+    return [ \%xmltv_id_to_dvb, \%lineup_name_to_dvb, ];
+}
+
+#*****************************************************************************
+#                          Merging XMLTV/Wikipedia data                      *
+#*****************************************************************************
+
+# Create a hash unifiying the XMLTV and Wikipedia channel data, with channel matching
+# based on the channel name
+#
+sub get_merged_xmltv_wp_data {
+    # get the filtered WP channel data (listref)
+    my $wp_channels_aref = get_filtered_channels_for_platform();
+    # get the tidied XMLTV channel data (hashref)
+    my $xmltv_channels_href = get_tidied_xmltv_channels();
+    # get the DVB mapping for platform (hashref, if available)
+    my $dvb_maps_aref = get_dvb_lookup_maps();
+    # get the name-icon mapping for non-XMLTV channels
+    my $non_xmltv_icons_href = get_non_xmltv_icons();
+
+    my $channels_aref = [];
+
+    foreach my $wp_chan_href (@{$wp_channels_aref}) {
+
+        my $chan_href = {};
+
+        $chan_href->{'epg_section'}  = $wp_chan_href->{'epg_section'}  if (exists $wp_chan_href->{'epg_section'});
+        $chan_href->{'epg_num'}      = $wp_chan_href->{'num'}          if (exists $wp_chan_href->{'num'});
+        $chan_href->{'name'}         = $wp_chan_href->{'name'}         if (exists $wp_chan_href->{'name'});
+        $chan_href->{'short-name'}   = $wp_chan_href->{'short-name'}   if (exists $wp_chan_href->{'short-name'});
+        $chan_href->{'package'}      = $wp_chan_href->{'package'}      if (exists $wp_chan_href->{'package'});
+        $chan_href->{'availability'} = $wp_chan_href->{'availability'} if (exists $wp_chan_href->{'availability'});
+        $chan_href->{'hdtv'}         = $wp_chan_href->{'hdtv'}         if (exists $wp_chan_href->{'hdtv'});
+        $chan_href->{'aspect'}       = $wp_chan_href->{'aspect'}       if (exists $wp_chan_href->{'aspect'});
+        $chan_href->{'format'}       = $wp_chan_href->{'format'}       if (exists $wp_chan_href->{'format'});
+        $chan_href->{'xmltvid'}      = $wp_chan_href->{'xmltvid'}      if (exists $wp_chan_href->{'xmltvid'});
+
+        $chan_href = update_xmltvid_by_name($chan_href, $xmltv_channels_href);
+        $chan_href = update_icons($chan_href, $xmltv_channels_href, $non_xmltv_icons_href);
+        $chan_href = update_dvb_params_by_xmltvid($chan_href, $dvb_maps_aref);
+
+        push @{$channels_aref}, $chan_href;
+    }
+
+    return $channels_aref;
+}
+
+sub get_non_xmltv_icons {
+
+    # Retrieve icon map file via XMLTV::Supplement
+    my $map = GetSupplement("tv_grab_uk_rt", 'channel_icons');
+    return if (!defined $map || $map eq '');
+
+    # hashref to store mappings
+    my $name_to_icon = {};
+
+    $map = decode_utf8($map);
+    my @lines = split /[\n\r]+/, $map;
+
+    MAP_ENTRY:
+    foreach my $line (@lines) {
+        # Skip blank lines. Comments are allowed if they are at the start
+        # of the line.
+        next MAP_ENTRY if ($line =~ m/^#/ || $line =~ m/^$/);
+        my @fields = split /\|/, $line;
+        # We need  2 fields (name, icon).
+        if (scalar @fields != 2) {
+            print STDERR "Wrong number of fields in icon map file - entry:\n"
+                    . "\t" . $line if $debug;
+            next MAP_ENTRY;
+        }
+
+        # The mapping fields for each entry are:
+        # 1) Lineup name
+        # 2) Icon URL
+        #
+        my ($name, $icon, ) = @fields;
+
+        # Check for key fields, skip if missing
+        if (!defined $name || $name eq '') {
+            next MAP_ENTRY;
+        }
+        if (!defined $icon || $icon eq '') {
+            next MAP_ENTRY;
+        }
+        if ($icon !~ m{^http://}i) {
+            next MAP_ENTRY;
+        }
+
+        # Check whether current channel name has already been seen
+        if (defined $name && exists $name_to_icon->{$name}) {
+            print STDERR "Have already seen channel '$name', skipping entry...\n" if $debug;
+            print STDERR "  $line\n" if $debug;
+            next MAP_ENTRY;
+        }
+
+        # store icon URL keyed against channel name
+        $name_to_icon->{$name} = $icon;
+    }
+
+    return $name_to_icon;
+}
+
+sub update_xmltvid_by_name {
+
+    my $chan_href = shift;
+    my $xmltv_channels_href = shift;
+
+    XMLTV_CHAN:
+    foreach my $xmltv_id (keys % {$xmltv_channels_href}) {
+
+        # ignore attempting to match an ID for channel if we have already specified
+        # an XMLTV ID via update_specific_channels() when processing WP channels
+        last XMLTV_CHAN if exists $chan_href->{'xmltvid'};
+
+        # ignore radio channels as tv_grab_uk_rt does not carry listings for these
+        last XMLTV_CHAN if $chan_href->{'format'} eq 'Radio';
+        # ignore text channels as tv_grab_uk_rt does not carry listings for these either
+        last XMLTV_CHAN if $chan_href->{'format'} =~ m/Text service/i;
+
+        # ignore IDs we are explicitly ignoring for this platform
+        if ( check_hash( \%lineup_config, ($platform, 'ignore-xmltvids') ) ) {
+            my @ignore_ids = @{$lineup_config{$platform}->{'ignore-xmltvids'}};
+            if ( grep { m/^\Q$xmltv_id\E$/i } @ignore_ids ) {
+                next XMLTV_CHAN;
+            }
+        }
+
+        # add ID if we have a match against channel name
+        if ($xmltv_channels_href->{$xmltv_id}{'tidied-name'} eq $chan_href->{'name'}) {
+            $chan_href->{'xmltvid'} = $xmltv_id;
+            last XMLTV_CHAN;
+        }
+    }
+
+    return $chan_href;
+}
+
+sub update_icons {
+
+    my $chan_href = shift;
+    my $xmltv_channels_href = shift;
+    my $non_xmltv_icons_href = shift;
+
+    # update other channel details if we have got an ID
+    if ( exists $chan_href->{'xmltvid'} && check_hash( $xmltv_channels_href, ( $chan_href->{'xmltvid'}, 'icon' ) ) ) {
+        $chan_href->{'icon'} = $xmltv_channels_href->{ $chan_href->{'xmltvid'} }{'icon'}[0]{'src'};
+    }
+    elsif ( exists $non_xmltv_icons_href->{ $chan_href->{'name'} }) {
+        $chan_href->{'icon'} = $non_xmltv_icons_href->{ $chan_href->{'name'} };
+    }
+    # log any missing icons when debugging is enabled
+    elsif ($debug) {
+        my $missing_icons_path = "missing_icons_unsorted";
+        if (open ICONS, ">>", $missing_icons_path) {
+            print ICONS "$chan_href->{'name'}|\n";
+            close ICONS;
+        }
+        else {
+            print STDERR "Error writing missing icons file '$missing_icons_path' :  $1\n";
+        }
+    }
+
+    return $chan_href;
+}
+
+sub update_dvb_params_by_xmltvid {
+
+    my $chan_href = shift;
+    my $xmltv_id  = $chan_href->{'xmltvid'};
+    my $chan_name = $chan_href->{'name'};
+
+    my $dvb_maps_aref = shift;
+    my $xmltv_id_to_dvb    = $dvb_maps_aref->[0];
+    my $lineup_name_to_dvb = $dvb_maps_aref->[1];
+
+    # handle channels which are supported by XMLTV
+    if (defined $xmltv_id && exists $xmltv_id_to_dvb->{$xmltv_id}) {
+        $chan_href->{'serviceid'} = $xmltv_id_to_dvb->{$xmltv_id}{'serviceid'};
+        $chan_href->{'dvb-name'}  = $xmltv_id_to_dvb->{$xmltv_id}{'dvb-name'};
+    }
+    # otherwise handle channels which are recognised by name
+    elsif (exists $lineup_name_to_dvb->{$chan_name}) {
+        $chan_href->{'serviceid'} = $lineup_name_to_dvb->{$chan_name}{'serviceid'};
+        $chan_href->{'dvb-name'}  = $lineup_name_to_dvb->{$chan_name}{'dvb-name'};
+    }
+
+    return $chan_href;
+}
+
+# Print text list of supported platforms
+#
+sub print_platforms {
+    my $platforms_aref = get_platforms();
+
+    foreach my $platform (@{$platforms_aref}) {
+        print $platform . "\n";
+    }
+}
+
+# Print xmltv-lineups.xsd compliant XML string of supported platforms
+#
+sub print_platforms_xml {
+    my $platforms_aref = get_platforms();
+    my $xml_lineups_href = {};
+
+    $xml_lineups_href->{'modified'}            = '' . get_datetime_now_as_string();
+    $xml_lineups_href->{'generator-info-name'} = $GENERATOR_INFO_NAME;
+    $xml_lineups_href->{'generator-info-url'}  = $GENERATOR_INFO_URL;
+
+    foreach my $platform (@{$platforms_aref}) {
+        my $xml_lineup_href = {};
+
+        $xml_lineup_href->{'id'}           = "$platform";
+        $xml_lineup_href->{'type'}         = "$lineup_config{$platform}->{'lineup-type'}";
+        $xml_lineup_href->{'display-name'} = [ { lang => "en-GB",
+                                                 _    => "$lineup_config{$platform}->{'desc'}", },
+                                             ];
+        if (exists $lineup_config{$platform}{'availability'}{'country'}) {
+            foreach my $country ( @{ $lineup_config{$platform}{'availability'}{'country'} } ) {
+                push @{$xml_lineup_href->{'availability'}}, {area => 'country', _ => $country, };
+            }
+        }
+
+        push @{$xml_lineups_href->{'xmltv-lineup'}}, $xml_lineup_href;
+    }
+
+    # setup XML::Compile and create XML lineup
+    my $schema = XML::Compile::Schema->new('xmltv-lineups.xsd');
+    my $doc = XML::LibXML::Document->new('1.0', 'UTF-8');
+    my $writer = $schema->compile(WRITER => 'xmltv-lineups');
+    my $xml = $writer->($doc, $xml_lineups_href);
+
+    my $pi = $doc->createProcessingInstruction("xml-stylesheet");
+    $pi->setData(type=>'application/xml', href=>'xmltv-lineups.xsl');
+    $doc->appendChild($pi);
+
+    $doc->setDocumentElement($xml);
+    print $doc->toString(2);
+}
+
+sub list_merged_xmltv_wp_data {
+    my $channels_aref = get_merged_xmltv_wp_data();
+
+    print "\n";
+    print "Merged data for channels on the " . $platform . " platform: \n";
+    foreach my $chan_href (@$channels_aref) {
+        printf "%5s %-32s %-12s %-38s %-38s %5s %-15s\n",
+                $chan_href->{'epg_num'},
+                $chan_href->{'name'   },
+                join( "/", get_packages_for_channel($chan_href) ),
+                #exists $chan_href->{'xmltvid'  } ? $chan_href->{'xmltvid'  } : "",
+                exists $chan_href->{'xmltvid'  } ? $chan_href->{'xmltvid'  } : "",
+                exists $chan_href->{'icon'     } ? get_icon_filename($chan_href->{'icon'}) : "",
+                exists $chan_href->{'serviceid'} ? $chan_href->{'serviceid'} : "",
+                exists $chan_href->{'dvb-name' } ? $chan_href->{'dvb-name' } : "";
+    }
+    print "\n";
+    print scalar @$channels_aref . " channels listed\n";
+    print "\n";
+}
+
+# Return a list of the packages this channel belongs to in the associated
+# lineup
+#
+sub get_packages_for_channel {
+    my $chan_href = shift;
+    my @packages = ();
+
+    foreach my $basic_pkg ( @{$chan_href->{'package'}{'basic'}} ) {
+        push @packages, $basic_pkg;
+    }
+    foreach my $subs_pkg ( @{$chan_href->{'package'}{'subscription'}} ) {
+        push @packages, $subs_pkg;
+    }
+
+    #return join ", ", @packages;
+    return @packages;
+}
+
+# Return the filename portion of a channel logo
+#
+sub get_icon_filename {
+    my $icon = shift;
+    return substr($icon, rindex($icon, "/") + 1);
+}
+
+sub generate_xml_from_merged_data {
+    # first, grab the merged XMLTV/WP data and create hashref containing
+    # element data
+    my $channels_aref = get_merged_xmltv_wp_data();
+
+    my $xml_lineup_href = {};
+
+    $xml_lineup_href->{'id'} = "$platform";
+
+    $xml_lineup_href->{'modified'}            = '' . get_datetime_now_as_string();
+    $xml_lineup_href->{'source-info-url'}     = $lineup_config{$platform}{'platform-url'};
+    $xml_lineup_href->{'generator-info-name'} = $GENERATOR_INFO_NAME;
+    $xml_lineup_href->{'generator-info-url'}  = $GENERATOR_INFO_URL;
+
+
+
+    $xml_lineup_href->{'type'} = $lineup_config{$platform}->{'lineup-type'};
+    $xml_lineup_href->{'display-name'} = [ { lang => "en-GB",
+                                             _    => $lineup_config{$platform}->{'desc'}, },
+                                         ];
+    if (exists $lineup_config{$platform}{'availability'}{'country'}) {
+        foreach my $country ( @{ $lineup_config{$platform}{'availability'}{'country'} } ) {
+            push @{$xml_lineup_href->{'availability'}}, {area => 'country', _ => $country, };
+        }
+    }
+
+    # listrefs to store lineups entries
+    my $xml_lineup_entries_aref = ();
+
+    foreach my $chan_href (@$channels_aref) {
+        # populate lineup entry hashref contents
+        my $xml_lineup_entry_href = {};
+        $xml_lineup_entry_href->{'preset'} = $chan_href->{'epg_num'};
+        $xml_lineup_entry_href->{'section'} = $chan_href->{'epg_section'};
+
+        $xml_lineup_entry_href->{'package'} = [];
+        foreach my $basic_pkg ( @{$chan_href->{'package'}{'basic'}} ) {
+            push @{$xml_lineup_entry_href->{'package'}}, {type => 'basic', _ => $basic_pkg, };
+        }
+        foreach my $subs_pkg ( @{$chan_href->{'package'}{'subscription'}} ) {
+            push @{$xml_lineup_entry_href->{'package'}}, {type => 'subscription', _ => $subs_pkg, };
+        }
+
+        $xml_lineup_entry_href->{'availability'} = [];
+        if (exists $chan_href->{'availability'}{'city'}) {
+            foreach my $city ( keys %{$chan_href->{'availability'}{'city'}} ) {
+                if ($chan_href->{'availability'}{'city'}{$city}) {
+                    push @{$xml_lineup_entry_href->{'availability'}}, {area => 'city', _ => $city, };
+                }
+            }
+        }
+        if (exists $chan_href->{'availability'}{'region'}) {
+            foreach my $region ( keys %{$chan_href->{'availability'}{'region'}} ) {
+                if ($chan_href->{'availability'}{'region'}{$region}) {
+                    push @{$xml_lineup_entry_href->{'availability'}}, {area => 'region', _ => $region, };
+                }
+            }
+        }
+        if (exists $chan_href->{'availability'}{'country'}) {
+            foreach my $country ( keys %{$chan_href->{'availability'}{'country'}} ) {
+                if ($chan_href->{'availability'}{'country'}{$country} == 1) {
+                    push @{$xml_lineup_entry_href->{'availability'}}, {area => 'country', _ => $country, };
+                }
+            }
+        }
+        if (exists $chan_href->{'availability'}{'postcode'}) {
+            my $postcode = $chan_href->{'availability'}{'postcode'};
+            push @{$xml_lineup_entry_href->{'availability'}}, {area => 'postcode', _ => $postcode, };
+        }
+
+        # populate station hashref contents
+        my $xml_station_href = {};
+        $xml_station_href->{'name'} = { lang => "en-GB",
+                                        _    => encode_utf8( $chan_href->{'name'} ),
+                                      };
+        # For BBC1/2 and ITV1/+1/HD we update the channel short name in
+        # replace_regional_channels() to be consistent across all regional
+        # variants of these channels
+        if (exists $chan_href->{'short-name'} && defined $chan_href->{'short-name'}) {
+            $xml_station_href->{'short-name'} = { lang => "en-GB",
+                                                  _    => encode_utf8( $chan_href->{'short-name'} ),
+                                                };
+        }
+        else {
+            $xml_station_href->{'short-name'} = { lang => "en-GB",
+                                                  _    => encode_utf8( $chan_href->{'name'} ),
+                                                };
+        }
+        # logo dimensions are standard lyngsat sizes
+        $xml_station_href->{'logo'} = [ { url    => $chan_href->{'icon'},
+                                          height => 99,
+                                          width  => 132,
+                                        }, ] if exists $chan_href->{'icon'};
+
+        # Fuzzy matching for commfree channels. Match BBC channels by default
+        if ($chan_href->{'name'} =~ m/^BBC/i || $chan_href->{'name'} =~ m/^(CBBC|CBeebies|301)$/i) {
+            $xml_station_href->{'commercial-free'} = "true";
+        }
+        else {
+            $xml_station_href->{'commercial-free'} = "false";
+        }
+
+        my $video_href = {};
+        if (exists $chan_href->{'hdtv'}) {
+            $video_href->{'format'} = "HDTV" if $chan_href->{'hdtv'};
+            $video_href->{'format'} = "SDTV" if ! $chan_href->{'hdtv'};
+        }
+        if (exists $chan_href->{'aspect'}) {
+            $video_href->{'aspect-ratio'} = $chan_href->{'aspect'};
+        }
+        $xml_station_href->{'video'} = $video_href if (keys %$video_href);
+
+        if (exists $chan_href->{'xmltvid'}) {
+            $xml_station_href->{'rfc2838'} = $chan_href->{'xmltvid'};
+        }
+        if (exists $chan_href->{'format'}) {
+            $xml_station_href->{'type'} = $chan_href->{'format'};
+        }
+
+        # store station element to entry hashref
+        $xml_lineup_entry_href->{'station'} = $xml_station_href;
+
+        # populate channel hashref contents (we have DTV and STB lineup types)
+        my $xml_channel_href = {};
+        if ($lineup_config{$platform}->{'lineup-type'} eq 'DTV') {
+
+            if ($platform =~ m/^freesat/i) {
+                $xml_channel_href->{'original-network-id'} = "2"; # required
+            }
+            elsif ($platform =~ m/^freeview/i) {
+                $xml_channel_href->{'original-network-id'} = "9018"; #required
+            }
+            elsif ($platform =~ m/^saorview/i) {
+                $xml_channel_href->{'original-network-id'} = "8564"; #required
+            }
+
+            $xml_channel_href->{'transport-id'} = $chan_href->{'transportid'} if exists $chan_href->{'transportid'}; # optional
+
+            if (! exists $chan_href->{'serviceid'}) {
+                #print STDERR "Error: DTV channels must have a service-id configured\n";
+                $xml_channel_href->{'service-id'} = '0';
+                #exit 1;
+            }
+            else {
+                $xml_channel_href->{'service-id'} = $chan_href->{'serviceid'}; # required
+            }
+
+            $xml_channel_href->{'lcn'} = $chan_href->{'epg_num'};
+            $xml_channel_href->{'service-name'} = $chan_href->{'dvb-name'} if exists $chan_href->{'dvb-name'};
+            $xml_channel_href->{'encrypted'} = "false";
+            #$xml_channel_href->{'provider-name'} = "Provider of $chan_href->{'name'}";
+
+            # store dvb channel hashref to lineup hashref
+            $xml_lineup_entry_href->{'dvb-channel'} = $xml_channel_href;
+        }
+        elsif ($lineup_config{$platform}->{'lineup-type'} eq 'STB') {
+            $xml_channel_href->{'stb-preset'} = $chan_href->{'epg_num'}; #required
+
+            # store dvb channel hashref to lineup hashref
+            $xml_lineup_entry_href->{'stb-channel'} = $xml_channel_href;
+        }
+
+        # push lineup entry element to listref
+        push @$xml_lineup_entries_aref, $xml_lineup_entry_href;
+    }
+
+    $xml_lineup_href->{'lineup-entry'} = $xml_lineup_entries_aref;
+
+    # setup top-level xmltv-lineups element to contain 1 or more lineups
+    my $xml_lineups_href = {};
+    push @{$xml_lineups_href->{'xmltv-lineup'}}, $xml_lineup_href;
+
+
+    # setup XML::Compile and create XML lineup
+    my $schema = XML::Compile::Schema->new('xmltv-lineups.xsd');
+    my $doc = XML::LibXML::Document->new('1.0', 'UTF-8');
+    my $writer = $schema->compile(WRITER => 'xmltv-lineups');
+    my $xml = $writer->($doc, $xml_lineups_href);
+
+    my $pi = $doc->createProcessingInstruction("xml-stylesheet");
+    $pi->setData(type=>'application/xml', href=>'xmltv-lineups.xsl');
+    $doc->appendChild($pi);
+
+    $doc->setDocumentElement($xml);
+    print $doc->toString(2);
+}
+
+sub list_icons_for_platform {
+    my $channels_aref = get_merged_xmltv_wp_data();
+    my %icons;
+
+    # Create hash of unique icon URLs to retrieve
+    foreach my $chan_href (@$channels_aref) {
+        if (exists $chan_href->{'icon'}) {
+            $icons{ $chan_href->{'icon'} }++;
+        }
+    }
+
+    # Print in order
+    foreach my $icon (sort keys %icons) {
+        print $icon . "\n";
+    }
+}
+
+#*****************************************************************************
+#                          HD Channels in the UK                             *
+#*****************************************************************************
+
+# Determine how many UK HDTV channels (per WP) are supported in the
+# XMLTV uk_rt grabber, based on matching up the channel names
+#
+sub check_hdtv_coverage {
+    my $hd_chans_aref    = get_wp_hd_channels();
+    my $xmltv_chans_href = get_tidied_xmltv_channels();
+    my @unmatched;
+
+    HD_CHAN:
+    foreach my $hd_chan_href (@$hd_chans_aref) {
+        foreach my $xmltv_chan_href (keys %$xmltv_chans_href) {
+            next HD_CHAN if $hd_chan_href->{'name'} eq $xmltv_chans_href->{$xmltv_chan_href}{'tidied-name'};
+        }
+        if ($hd_chan_href->{'simulcast'} =~ m/simulcast/i) {
+            push @unmatched, $hd_chan_href;
+        }
+    }
+
+    if (@unmatched) {
+        print "\n";
+        print "Unmatched HDTV simulcast channels are:\n\n";
+        foreach my $chan_href (@unmatched) {
+            print "  " . $chan_href->{'name'} . "\n";
+        }
+        print "\n";
+    }
+}
+
+# Retrieve list of HD channels available in the UK from Wikipedia. Return
+# listref of hashref of HD channels containing name, details and EPG positions
+# on various platforms.
+#
+sub get_wp_hd_channels {
+    my $page = get_tree( $HDTV_URL );
+    if (!defined $page) {
+        croak "Error: Could not retrieve HDTV Channels page from Wikipedia!";
+    }
+
+    my @hd_channels;
+
+    TABLE:
+    foreach my $chan_tbl ( $page->look_down('_tag', 'table', 'class', 'wikitable sortable') ) {
+        # check this is a channel table
+        my @tbl_headers = $chan_tbl->look_down('_tag', 'th');
+        next TABLE if ($tbl_headers[0]->as_text() !~ /^Channel name$/i);
+        next TABLE if ($tbl_headers[2]->as_text() =~ /removed/i);
+
+        # now process each channel entry in turn
+        CHANNEL:
+        foreach my $chan_row ( $chan_tbl->look_down('_tag', 'tr') ) {
+            # ignore header row
+            next CHANNEL if ( $chan_row->look_down('_tag', 'th') );
+
+            my %channel;
+            # The 9 columns for each HD channel entry are (as of 2011-02-17):
+            #
+            # 1) Channel Name
+            # 2) Content
+            # 3) Type
+            # 4) Owner
+            # 5) Launch date
+            # 6) Freesat EPG no
+            # 7) Freeview EPG no
+            # 8) Sky EPG no
+            # 9) Virgin EPG no
+            #
+            my @chan_fields = $chan_row->look_down('_tag', 'td');
+            next TABLE if (scalar @chan_fields != 9);
+
+            $channel{'name'        } = $chan_fields[0]->as_trimmed_text() if !$chan_fields[0]->is_empty();
+            $channel{'content'     } = $chan_fields[1]->as_trimmed_text() if !$chan_fields[1]->is_empty();
+            $channel{'simulcast'   } = $chan_fields[2]->as_trimmed_text() if !$chan_fields[2]->is_empty();
+            $channel{'owner'       } = $chan_fields[3]->as_trimmed_text() if !$chan_fields[3]->is_empty();
+            $channel{'launch'      } = $chan_fields[4]->as_trimmed_text() if !$chan_fields[4]->is_empty();
+            $channel{'freesat_epg' } = $chan_fields[5]->as_trimmed_text() if !$chan_fields[5]->is_empty();
+            $channel{'freeview_epg'} = $chan_fields[6]->as_trimmed_text() if !$chan_fields[6]->is_empty();
+            $channel{'sky_epg'     } = $chan_fields[7]->as_trimmed_text() if !$chan_fields[7]->is_empty();
+            $channel{'virgin_epg'  } = $chan_fields[8]->as_trimmed_text() if !$chan_fields[8]->is_empty();
+
+            # remove citation reference text
+            %channel = %{ remove_citations(\%channel) };
+
+            push @hd_channels, \%channel;
+        }
+    }
+    $page->delete(); undef $page;
+
+    # debug print
+    print STDERR "Data::Dumper: get_wp_hd_channels() returns:\n" if $debug;
+    print STDERR Dumper(@hd_channels) if $debug;
+
+    return \@hd_channels;
+}
+
+#*****************************************************************************
+#                          Channel name matching                             *
+#*****************************************************************************
+
+# Here we compare the textual channel names provided by Wikipedia
+# and XMLTV's channel_ids file - the more they match each other the easier
+# it is to match them up (TV channels only, as XMLTV does not carry radio)
+#
+# Hash comparison code from:
+# http://forums.devshed.com/perl-programming-6/best-way-to-compare-two-hashes-347972.html
+#
+sub compare_names {
+
+    my %reversed_hash;
+
+    # First determine which channel_ids channel names are not seen in WP
+    %reversed_hash = reverse %wp_chan_names;
+    my @xmltv_unique = sort( grep ! exists $reversed_hash{ $_ }, values %xmltv_chan_names );
+
+    # Second determine which WP channel names are not seen in channel_ids
+    %reversed_hash = reverse %xmltv_chan_names;
+    my @wp_unique = sort( grep ! exists $reversed_hash{ $_ }, values %wp_chan_names );
+
+    my $max = max($#xmltv_unique, $#wp_unique);
+    while (@xmltv_unique < $max) {
+        push @xmltv_unique, '';
+    }
+    while (@wp_unique < $max) {
+        push @wp_unique, '';
+    }
+
+    print "\n";
+    printf "%-40s | %-40s\n", "XMLTV names", "Wikipedia names";
+    printf "%-40s | %-40s\n", "-----------", "---------------";
+    for (0..$max-1) {
+        printf "%-40s%s%-40s\n", encode_utf8($xmltv_unique[$_]), " | ", encode_utf8($wp_unique[$_]);
+    }
+}
+
+#*****************************************************************************
+#                            Convenience methods                             *
+#*****************************************************************************
+
+# Return the current time as an ISO 8601 string with UTC offset
+#
+sub get_datetime_now_as_string {
+
+    my $dt_now = DateTime->now(time_zone=>'Europe/London');
+    my $utc_offset = DateTime::TimeZone->offset_as_string($dt_now->offset);
+    return $dt_now->datetime() . " " . $utc_offset;
+}
+
+# Convenience method for use with XMLTV::Memoize. Only return content
+# after a successful response. We require access to the raw octets via
+# $resp->content in order to be able to process the data for double and
+# mis-encoded UTF-8 content. Calling $resp->decoded_content or using
+# LWP::Simple::get() (versions of LWP >=5.827) would not permit this.
+#
+sub get_octets {
+    my $resp = $ua->get(shift @_);
+    if ($resp->is_error) {
+        return undef;
+    }
+    else {
+        return $resp->content;
+    }
+}
+
+# Return an HTML::Tree from a given URL after decoding from UTF-8
+# and removing any HTML entities. Return undef if retrieval of URL
+# fails more than a configured number of times.
+#
+sub get_tree {
+    my $url = shift;
+    my $content;
+    my $nbretry = 0;
+    while (!defined($content = get_nice($url))) {
+        ++$nbretry;
+        return undef if $nbretry == $MAX_RETRY;
+        print STDERR "*** Retrying URL: '" . $url
+            . "' (attempt " . $nbretry . " of " . $MAX_RETRY . ") ***";
+    }
+
+    $content = decode_utf8($content);
+    decode_entities($content);
+    my $t = new HTML::TreeBuilder;
+    $t->parse($content) or croak "Cannot parse content of Tree\n";
+    $t->eof;
+    return $t;
+}
+
+# Remove Wikipedia citation references from text
+#
+sub remove_citations {
+    my $hash_ref = shift;
+    foreach my $key (@channel_fields) {
+        if (exists $hash_ref->{$key}) {
+            $hash_ref->{$key} =~ s/$citation_regex//g;
+        }
+    }
+    return $hash_ref;
+}
+
+# Look-up nested hash keys in order to prevent autovivification
+# See http://faq.perl.org/perlfaq4.html#How_can_I_check_if_a
+#
+# Usage: check_hash( \%hash, qw(key1 key2 key3)
+#
+sub check_hash {
+    my( $hash_ref, @keys ) = @_;
+    return unless @keys;
+
+    foreach my $key ( @keys ) {
+        return unless eval { exists $hash_ref->{$key} };
+        $hash_ref = $hash_ref->{$key};
+    }
+    return 1;
+}
