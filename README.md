@@ -155,6 +155,12 @@ xmltv-lineups.xsd
 The XML Schema document supplied is that used by the XMLTV Project. All
 lineups are generated against this schema.
 
+If you would like to see an example of the Perl data structure that is
+required by XML::Compile::Schema when generating a lineup against the
+xmltv-lineups schema, the following script will generate it for you:
+
+    ./print-lineups-xsd-code
+
 
 Robustness
 ----------

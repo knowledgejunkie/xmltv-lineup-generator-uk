@@ -1,0 +1,6 @@
+#!/usr/bin/perl
+
+use XML::Compile::Schema;
+
+my $schema = XML::Compile::Schema->new('xmltv-lineups.xsd');
+print $schema->template('PERL' => 'xmltv-lineups');
