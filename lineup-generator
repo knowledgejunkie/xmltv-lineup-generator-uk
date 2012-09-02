@@ -2228,16 +2228,16 @@ sub get_filtered_virgin_channels {
             $chan_href->{'package'} = $lineup_config{$platform}->{'packages'}{ $chan_href->{'name'} };
         }
         # otherwise determine which base package(s) a channel is available in
-        elsif ($chan_href->{'package'} =~ m/^M$/i) {
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?M$/i) {
             $chan_href->{'package'} = { 'basic' => ['M', 'M+', 'L', 'XL'], };
         }
-        elsif ($chan_href->{'package'} =~ m/^M\+$/i) {
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?M\+$/i) {
             $chan_href->{'package'} = { 'basic' => ['M+', 'L', 'XL'], };
         }
-        elsif ($chan_href->{'package'} =~ m/^L$/i) {
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?L$/i) {
             $chan_href->{'package'} = { 'basic' => ['L', 'XL'], };
         }
-        elsif ($chan_href->{'package'} =~ m/^XL$/i) {
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?XL$/i) {
             $chan_href->{'package'} = { 'basic' => ['XL'], };
         }
         # Otherwise, just output the package name
@@ -2271,16 +2271,16 @@ sub get_filtered_virginhd_channels {
         next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
 
         # determine which base package(s) a channel is available in
-        if ($chan_href->{'package'} =~ m/^M$/i) {
+        if ($chan_href->{'package'} =~ m/^(TV\s+)?M$/i) {
             $chan_href->{'package'} = { 'basic' => ['M', 'M+', 'L', 'XL'], };
         }
-        elsif ($chan_href->{'package'} =~ m/^M\+$/i) {
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?M\+$/i) {
             $chan_href->{'package'} = { 'basic' => ['M+', 'L', 'XL'], };
         }
-        elsif ($chan_href->{'package'} =~ m/^L$/i) {
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?L$/i) {
             $chan_href->{'package'} = { 'basic' => ['L', 'XL'], };
         }
-        elsif ($chan_href->{'package'} =~ m/^XL$/i) {
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?XL$/i) {
             $chan_href->{'package'} = { 'basic' => ['XL'], };
         }
         # Otherwise, just output the package name
