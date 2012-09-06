@@ -536,11 +536,11 @@ my %filtered_wp_channels;   # filled by get_filtered_wp_channels()
 #                         Source/Generator variables                       *
 #***************************************************************************
 #
-my $SOURCE_INFO_NAME = "Wikipedia/tv_grab_uk_rt/dvbscan";
+my $SOURCE_INFO_NAME = "Wikipedia/tv_grab_uk_rt/w_scan";
 my $SOURCE_INFO_URL  = $WP_ROOT_URL . "Television_in_the_United_Kingdom";
 
-my $GENERATOR_INFO_NAME = "XMLTV lineup generator for UK & Eire";
-my $GENERATOR_INFO_URL  = "https://github.com/knowledgejunkie/";
+my $GENERATOR_INFO_NAME = "XMLTV Lineup Generator for the UK and Ireland";
+my $GENERATOR_INFO_URL  = "https://github.com/knowledgejunkie/xmltv-lineup-generator-uk";
 
 #***************************************************************************
 #                   Platform/package configuration hash                    *
