@@ -1625,6 +1625,9 @@ sub process_channel_table {
             $channel{'package'} = 'Free-to-air';
         }
 
+        # skip channels with a format of "N/A" / may be temp placeholder channels
+        next CHANNEL if ( defined $channel{'format'} && $channel{'format'} =~ m/^n\/a$/i );
+
         # remove WP citation reference text
         %channel = %{ remove_citations(\%channel) };
 
