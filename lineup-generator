@@ -2276,8 +2276,12 @@ sub get_filtered_virginhd_channels {
         # skip radio channels if not requested
         next CHAN if ( exists $chan_href->{'format'} &&  $chan_href->{'format'} eq 'Radio' && !$radio );
 
-        # determine which base package(s) a channel is available in
-        if ($chan_href->{'package'} =~ m/^(TV\s+)?M$/i) {
+        # one-off packages fixups for subscription channels
+        if (exists $lineup_config{$platform}->{'packages'}{ $chan_href->{'name'} }) {
+            $chan_href->{'package'} = $lineup_config{$platform}->{'packages'}{ $chan_href->{'name'} };
+        }
+        # otherwise determine which base package(s) a channel is available in
+        elsif ($chan_href->{'package'} =~ m/^(TV\s+)?M$/i) {
             $chan_href->{'package'} = { 'basic' => ['M', 'M+', 'L', 'XL'], };
         }
         elsif ($chan_href->{'package'} =~ m/^(TV\s+)?M\+$/i) {
