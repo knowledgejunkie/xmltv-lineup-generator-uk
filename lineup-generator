@@ -3526,7 +3526,9 @@ sub check_country_postcode_coverage {
     foreach my $broadcast_area (sort keys %postcodes_by_country) {
         my @area_codes = split /\s*,\s*/, $postcodes_by_country{$broadcast_area};
         foreach my $code (@area_codes) {
-            $postcodes_to_broadcast_area_href->{$code} = $broadcast_area;
+            if ($code !~ m/EIRE/) { # ignore psuedo-postcodes
+                $postcodes_to_broadcast_area_href->{$code} = $broadcast_area;
+            }
         }
     }
 
