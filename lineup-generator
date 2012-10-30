@@ -548,12 +548,16 @@ my @channel_fields = qw{ num name notes owner hours mux package format };
 my $citation_regex = qr/\s*\[n\s+\d+\]\s*/i;
 
 my $WP_ROOT_URL     = 'http://en.wikipedia.org/wiki/';
+my $ITX_ROOT_URL    = 'http://www.insidethex.co.uk/xmltv/lineups/';
+
 my $FREESAT_URL     = $WP_ROOT_URL . 'List_of_channels_on_Freesat';
 my $FREEVIEW_URL    = $WP_ROOT_URL . 'List_of_digital_terrestrial_television_channels_(UK)';
 my $SAORVIEW_URL    = $WP_ROOT_URL . 'List_of_channels_on_Saorview';
-my $SKY_URL         = $WP_ROOT_URL . 'List of channels on Sky';
-my $UPCIRELAND_URL  = $WP_ROOT_URL . 'List_of_channels_on_UPC_Ireland';
 my $VIRGINTV_URL    = $WP_ROOT_URL . 'List_of_channels_on_Virgin_TV';
+
+my $SKY_URL         = $ITX_ROOT_URL . 'List_of_channels_on_Sky';
+my $UPCIRELAND_URL  = $ITX_ROOT_URL . 'List_of_channels_on_UPC_Ireland';
+
 my $HDTV_URL        = $WP_ROOT_URL . 'List_of_HD_channels_in_the_UK';
 
 # hashes to store cached copies of processed wikipedia channel lists
@@ -1528,7 +1532,7 @@ sub get_unfiltered_wp_channels {
                 foreach my $chan_tbl ( $curr_node->look_down('_tag', 'table') ) {
                     # check this is a channel table
                     my @tbl_headers = $chan_tbl->look_down('_tag', 'th');
-                    if ($tbl_headers[0]->as_text() =~ /EPG No/i && $tbl_headers[-1]->as_text() !~ /removed/i) {
+                    if (@tbl_headers && $tbl_headers[0]->as_text() =~ /EPG No/i && $tbl_headers[-1]->as_text() !~ /removed/i) {
 
                         # process the channel table
                         my $channels_aref = process_channel_table( $section_name, $chan_tbl);
@@ -1725,6 +1729,9 @@ sub update_wp_channel_availability {
     elsif ($channel_href->{'notes'} =~ m/^Northern Ireland only/i) {
         $channel_href->{'availability'}{'country'}{'Northern Ireland'} = 1;
     }
+    elsif ($channel_href->{'notes'} =~ m/^Audio description\. Northern Ireland only/i) {
+        $channel_href->{'availability'}{'country'}{'Northern Ireland'} = 1;
+    }
     elsif ($channel_href->{'notes'} =~ m/(^Scotland|\. Scotland) only/i) {
         $channel_href->{'availability'}{'country'}{'Scotland'} = 1;
     }
@@ -1836,6 +1843,8 @@ sub get_filtered_freesat_channels {
         next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} eq 'Radio' && !$radio );
         # skip text channels
         next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Text service/i );
+        # skip channels marked as "Freetime boxes only."
+        next CHAN if ( exists $chan_href->{'notes'} && $chan_href->{'notes'} =~ m/Freetime boxes only/i );
 
         # determine if channel is flagged as FTA
         if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
@@ -1871,6 +1880,8 @@ sub get_filtered_freesathd_channels {
         next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} eq 'Radio' && !$radio );
         # skip text channels
         next CHAN if ( exists $chan_href->{'format'} && $chan_href->{'format'} =~ m/Text service/i );
+        # skip channels marked as "Freetime boxes only."
+        next CHAN if ( exists $chan_href->{'notes'} && $chan_href->{'notes'} =~ m/Freetime boxes only/i );
 
         # determine if channel is flagged as FTA
         if ($chan_href->{'package'} =~ m/^Free-to-air$/i) {
