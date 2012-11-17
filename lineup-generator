@@ -435,59 +435,7 @@ my %itv_one_hd_regs_terrestrial = (
     'hd.central-macro.itv1.itv.co.uk' => {
         'name' => 'ITV1 HD',
         'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'central'} },
-    },
-    'hd.northwest-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
-                                        . $itv_one_postcode{'border'} . ","
-                                        . $itv_one_postcode{'scottish-border'} },
-    },
-    'hd.london-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'london'} },
-    },
-    'hd.southeast-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'meridian'} . ","
-                                        . $itv_one_postcode{'anglia'} },
-    },
-    'hd.west-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'west'} . ","
-                                        . $itv_one_postcode{'westcountry'},
-                            'country' => [ 'Wales' ], },
-    },
-    'hd.northeast-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'yorkshire'} . ","
-                                        . $itv_one_postcode{'tynetees'} },
-    },
-    'hd.scotland-macro.stv.tv' => {
-        'name' => 'STV HD',
-        'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'stv-central'} . ","
-                                        . $itv_one_postcode{'stv-north'} },
-    },
-);
-
-# Virgin
-# Same channels as Freeview (for now)
-my %itv_one_hd_regs_virgin = %itv_one_hd_regs_terrestrial;
-
-# Freesat
-# No UTV HD. Only ITV1 HD London and ITV1 HD Granada are FTA
-my %itv_one_hd_regs_freesat = (
-    'hd.london-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
-        'availability' => { 'postcode' => $itv_one_postcode{'london'} . ","
-                                        . $itv_one_postcode{'central'} . ","
+        'availability' => { 'postcode' => $itv_one_postcode{'central'} . ","
                                         . $itv_one_postcode{'west'} . ","
                                         . $itv_one_postcode{'westcountry'},
                             'country' => [ 'Wales' ], },
@@ -501,6 +449,11 @@ my %itv_one_hd_regs_freesat = (
                                         . $itv_one_postcode{'yorkshire'} . ","
                                         . $itv_one_postcode{'tynetees'} },
     },
+    'hd.london-macro.itv1.itv.co.uk' => {
+        'name' => 'ITV1 HD',
+        'short-name' => 'ITV1 HD',
+        'availability' => { 'postcode' => $itv_one_postcode{'london'} },
+    },
     'hd.southeast-macro.itv1.itv.co.uk' => {
         'name' => 'ITV1 HD',
         'short-name' => 'ITV1 HD',
@@ -515,11 +468,20 @@ my %itv_one_hd_regs_freesat = (
     },
 );
 
+# Freesat
+# No UTV HD.
+my %itv_one_hd_regs_freesat = %itv_one_hd_regs_terrestrial;
+delete $itv_one_hd_regs_freesat{'hd.ni-macro.u.tv'};
+
 # Sky
 # No UTV HD. No STV HD
 my %itv_one_hd_regs_sky = %itv_one_hd_regs_terrestrial;
 delete $itv_one_hd_regs_sky{'hd.ni-macro.u.tv'};
 delete $itv_one_hd_regs_sky{'hd.scotland-macro.stv.tv'};
+
+# Virgin
+# Same channels as Freeview
+my %itv_one_hd_regs_virgin = %itv_one_hd_regs_terrestrial;
 
 
 my %setanta_ireland_sky = (
@@ -550,11 +512,13 @@ my $citation_regex = qr/\s*\[n\s+\d+\]\s*/i;
 my $WP_ROOT_URL     = 'http://en.wikipedia.org/wiki/';
 my $ITX_ROOT_URL    = 'http://www.insidethex.co.uk/xmltv/lineups/';
 
-my $FREESAT_URL     = $WP_ROOT_URL . 'List_of_channels_on_Freesat';
 my $FREEVIEW_URL    = $WP_ROOT_URL . 'List_of_digital_terrestrial_television_channels_(UK)';
-my $SAORVIEW_URL    = $WP_ROOT_URL . 'List_of_channels_on_Saorview';
-my $VIRGINTV_URL    = $WP_ROOT_URL . 'List_of_channels_on_Virgin_TV';
 
+# These EPG pages were deleted from WP in October/November 2012, so use a backup
+#
+my $FREESAT_URL     = $ITX_ROOT_URL . 'List_of_channels_on_Freesat';
+my $SAORVIEW_URL    = $ITX_ROOT_URL . 'List_of_channels_on_Saorview';
+my $VIRGINTV_URL    = $ITX_ROOT_URL . 'List_of_channels_on_Virgin_TV';
 my $SKY_URL         = $ITX_ROOT_URL . 'List_of_channels_on_Sky';
 my $UPCIRELAND_URL  = $ITX_ROOT_URL . 'List_of_channels_on_UPC_Ireland';
 
@@ -675,11 +639,11 @@ my %lineup_config = (
         'package-handler'   => \&get_filtered_freeview_channels,
         'dvb-sid-map'       => 'freeview.map',
         'regional-handlers' => {
-            'BBC One' => {  1 => \%bbc_one_regs, },
-            'BBC Two' => {  2 => \%bbc_two_regs, },
-            'ITV'     => {  3 => \%itv_one_regs, },
-            'ITV +1'  => { 33 => \%itv_one_plus_one_regs_terrestrial, },
-            'ITV HD'  => { 51 => \%itv_one_hd_regs_terrestrial, },
+            'BBC One' => {   1 => \%bbc_one_regs, },
+            'BBC Two' => {   2 => \%bbc_two_regs, },
+            'ITV'     => {   3 => \%itv_one_regs, },
+            'ITV +1'  => {  33 => \%itv_one_plus_one_regs_terrestrial, },
+            'ITV HD'  => { 103 => \%itv_one_hd_regs_terrestrial, },
         },
         'packages'          => {
         },
@@ -701,11 +665,11 @@ my %lineup_config = (
         'package-handler'   => \&get_filtered_freeviewhd_channels,
         'dvb-sid-map'       => 'freeview.map',
         'regional-handlers' => {
-            'BBC One' => {  1 => \%bbc_one_regs, },
-            'BBC Two' => {  2 => \%bbc_two_regs, },
-            'ITV'     => {  3 => \%itv_one_regs, },
-            'ITV +1'  => { 33 => \%itv_one_plus_one_regs_terrestrial, },
-            'ITV HD'  => { 51 => \%itv_one_hd_regs_terrestrial, },
+            'BBC One' => {   1 => \%bbc_one_regs, },
+            'BBC Two' => {   2 => \%bbc_two_regs, },
+            'ITV'     => {   3 => \%itv_one_regs, },
+            'ITV +1'  => {  33 => \%itv_one_plus_one_regs_terrestrial, },
+            'ITV HD'  => { 103 => \%itv_one_hd_regs_terrestrial, },
         },
         'packages'          => {
         },
