@@ -1472,7 +1472,6 @@ sub get_unfiltered_wp_channels {
         my $section_node = $h3->look_down('_tag', 'span', 'class', 'mw-headline');
         next SECTION if (! defined $section_node);
         my $section_name = defined $section_node->as_text() ? $section_node->as_text() : 'Unknown';
-        print STDERR "Processed '" . $section_name . "'...\n";
 
         # ignore unknown or future events sections
         next SECTION if ($section_name =~ m/20\d\d/ || $section_name =~ m/Unknown/i);
