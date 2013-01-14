@@ -165,14 +165,17 @@ xmltv-lineups schema, the following script will generate it for you:
 Robustness
 ----------
 
+In October/November 2012 many Wikipedia-based platform EPGs were deleted when
+it was determined that they were in contravention of Wikipedia policies.
+Backups of the relevant EPGs (providing channel numbering and other useful
+information) were taken and are now used when creating lineups.
+
+If you notice any channels that have been renamed/added/deleted on a platform
+which are not reflected in its lineup, please inform the developer.
+
 This tool employs significant pattern and string matching when merging data
 from multiple sources, and thus is prone to breakage if channel names or other
-key matching data are not consistent across sources. However, this tool has been
-used successfully for several months, and the author works to ensure sources
-maintain consistency over time.
-
-If you notice any channels that have been renamed/added/deleted on a service
-which are not reflected in a lineup, please inform the developer.
+key matching data are not consistent across sources.
 
 
 Author information

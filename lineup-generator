@@ -512,15 +512,17 @@ my $citation_regex = qr/\s*\[n\s+\d+\]\s*/i;
 my $WP_ROOT_URL     = 'http://en.wikipedia.org/wiki/';
 my $ITX_ROOT_URL    = 'http://www.insidethex.co.uk/xmltv/lineups/';
 
+# The list of digital terrestrial channels is still carried on WP
 my $FREEVIEW_URL    = $WP_ROOT_URL . 'List_of_digital_terrestrial_television_channels_(UK)';
 
-# These EPG pages were deleted from WP in October/November 2012, so use a backup
+# Platform-specific EPG pages were sadly deleted from WP in October/November 2012,
+# so we use a backup
 #
-my $FREESAT_URL     = $ITX_ROOT_URL . 'List_of_channels_on_Freesat';
-my $SAORVIEW_URL    = $ITX_ROOT_URL . 'List_of_channels_on_Saorview';
-my $VIRGINTV_URL    = $ITX_ROOT_URL . 'List_of_channels_on_Virgin_TV';
-my $SKY_URL         = $ITX_ROOT_URL . 'List_of_channels_on_Sky';
-my $UPCIRELAND_URL  = $ITX_ROOT_URL . 'List_of_channels_on_UPC_Ireland';
+my $FREESAT_URL     = $ITX_ROOT_URL . 'List_of_channels_on_Freesat.html';
+my $SAORVIEW_URL    = $ITX_ROOT_URL . 'List_of_channels_on_Saorview.html';
+my $SKY_URL         = $ITX_ROOT_URL . 'List_of_channels_on_Sky.html';
+my $UPCIRELAND_URL  = $ITX_ROOT_URL . 'List_of_channels_on_UPC_Ireland.html';
+my $VIRGINTV_URL    = $ITX_ROOT_URL . 'List_of_channels_on_Virgin_TV.html';
 
 my $HDTV_URL        = $WP_ROOT_URL . 'List_of_HD_channels_in_the_UK';
 
@@ -1468,7 +1470,10 @@ sub get_unfiltered_wp_channels {
     SECTION:
     foreach my $h3 ( $page->look_down('_tag', 'h3') ) {
         my $section_node = $h3->look_down('_tag', 'span', 'class', 'mw-headline');
+        next SECTION if (! defined $section_node);
         my $section_name = defined $section_node->as_text() ? $section_node->as_text() : 'Unknown';
+        print STDERR "Processed '" . $section_name . "'...\n";
+
         # ignore unknown or future events sections
         next SECTION if ($section_name =~ m/20\d\d/ || $section_name =~ m/Unknown/i);
 
