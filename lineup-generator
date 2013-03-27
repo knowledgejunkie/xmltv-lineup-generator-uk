@@ -48,6 +48,8 @@ my $RT_CHANNELS_URL = 'http://xmltv.radiotimes.com/xmltv/channels.dat';
 
 #FIXME
 #
+# national variants for BBC One HD
+#
 # let script read WP pages from disk, now that channel lists are DELETED from WP
 #
 # check all UK postcode districts are includes in lists
