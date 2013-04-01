@@ -1,11 +1,11 @@
 #!/bin/bash
 # Generate lineup for given platform
 
-ARGS=1
+ARGS=2
 
 if [ $# -ne "$ARGS" ]
 then
-    echo "Usage: `basename $0` platform"
+    echo "Usage: `basename $0` platform destdir"
     for platform in `perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --list-platforms-text`
     do
         echo "  $platform"
@@ -17,9 +17,9 @@ fi
 XMLTV_DIR=${HOME}/dev/src/cvs/xmltv-cvs/blib
 
 # First generate the index of available lineups
-perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --list-platforms > lineups.xml
+perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --list-platforms > $2/lineups.xml
 
 # Next, try to create a lineup for given platform
-XMLTV_SUPPLEMENT=${XMLTV_DIR}/share/ perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --generate-lineup --platform $1 > $1.xml
+XMLTV_SUPPLEMENT=${XMLTV_DIR}/share/ perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --generate-lineup --platform $1 > $2/$1.xml
 
 exit 0

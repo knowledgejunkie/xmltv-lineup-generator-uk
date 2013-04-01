@@ -1,16 +1,24 @@
 #!/bin/bash
 # Generate lineups for all supported platforms
 
+ARGS=1
+
+if [ $# -ne "$ARGS" ]
+then
+    echo "Usage: `basename $0` destdir"
+    exit $E_BADARGS
+fi
+
 # Path to blib/ dir within a checkout/build of XMLTV
 XMLTV_DIR=${HOME}/dev/src/cvs/xmltv-cvs/blib
 
 # First generate the index of available lineups
-perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --list-platforms > lineups.xml
+perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --list-platforms > $1/lineups.xml
 
 # Next, create a lineup for each supported platform
 for platform in `perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --list-platforms-text`
 do
-    XMLTV_SUPPLEMENT=${XMLTV_DIR}/share/ perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --generate-lineup --platform $platform > $platform.xml
+    XMLTV_SUPPLEMENT=${XMLTV_DIR}/share/ perl -I ${XMLTV_DIR}/lib/ ./lineup-generator --generate-lineup --platform $platform > $1/$platform.xml
 done
 
 exit 0
