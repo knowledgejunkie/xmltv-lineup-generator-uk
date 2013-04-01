@@ -202,6 +202,29 @@ my %bbc_one_regs_ni = (
     },
 );
 
+my %bbc_one_hd_regs = (
+    'hd.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One HD',
+        'short-name' => 'BBC One HD',
+        'availability' => { 'country' => [ 'England' ], },
+    },
+    'hd.northern-ireland.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Northern Ireland HD',
+        'short-name' => 'BBC One HD',
+        'availability' => { 'country' => [ 'Northern Ireland' ], },
+    },
+    'hd.scotland.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Scotland HD',
+        'short-name' => 'BBC One HD',
+        'availability' => { 'country' => [ 'Scotland' ], },
+    },
+    'hd.wales.bbc1.bbc.co.uk' => {
+        'name' => 'BBC One Wales HD',
+        'short-name' => 'BBC One HD',
+        'availability' => { 'country' => [ 'Wales' ], },
+    },
+);
+
 my %bbc_two_regs = (
     'bbc2.bbc.co.uk' => {
         'name' => 'BBC Two England',
@@ -230,6 +253,14 @@ my %bbc_two_regs_ni = (
         'name' => 'BBC Two Northern Ireland',
         'short-name' => 'BBC Two',
         'availability' => { 'country' => [ 'Ireland' ], },
+    },
+);
+
+my %bbc_two_hd_regs = (
+    'hd.bbc2.bbc.co.uk' => {
+        'name' => 'BBC Two HD',
+        'short-name' => 'BBC Two HD',
+        'availability' => { 'country' => [ 'England', 'Northern Ireland', 'Scotland', 'Wales' ], },
     },
 );
 
@@ -561,7 +592,6 @@ my %lineup_config = (
             'BBC Two' => { 102 => \%bbc_two_regs, },
             'ITV'     => { 103 => \%itv_one_regs_satellite, },
             'ITV1 +1' => { 112 => \%itv_one_plus_one_regs_freesat, },
-            'ITV1 HD' => { 119 => \%itv_one_hd_regs_freesat, },
         },
         'packages'          => {
         },
@@ -584,11 +614,13 @@ my %lineup_config = (
         'package-handler'   => \&get_filtered_freesathd_channels,
         'dvb-sid-map'       => 'freesat.map',
         'regional-handlers' => {
-            'BBC One' => { 101 => \%bbc_one_regs, },
-            'BBC Two' => { 102 => \%bbc_two_regs, },
-            'ITV'     => { 103 => \%itv_one_regs_satellite, },
-            'ITV1 +1' => { 112 => \%itv_one_plus_one_regs_freesat, },
-            'ITV1 HD' => { 119 => \%itv_one_hd_regs_freesat, },
+            'BBC One'    => { 101 => \%bbc_one_regs, },
+            'BBC Two'    => { 102 => \%bbc_two_regs, },
+            'ITV'        => { 103 => \%itv_one_regs_satellite, },
+            'BBC One HD' => { 108 => \%bbc_one_hd_regs, },
+            'BBC Two HD' => { 109 => \%bbc_two_hd_regs, },
+            'ITV1 +1'    => { 112 => \%itv_one_plus_one_regs_freesat, },
+            'ITV1 HD'    => { 119 => \%itv_one_hd_regs_freesat, },
         },
         'packages'          => {
         },
@@ -610,17 +642,19 @@ my %lineup_config = (
         'platform-url'      => $SKY_URL,
         'package-handler'   => \&get_filtered_freesatfromsky_channels,
         'regional-handlers' => {
-            'BBC One' => { 101 => \%bbc_one_regs,
-                           141 => \%bbc_one_regs_ni, },
+            'BBC One'    => { 101 => \%bbc_one_regs,
+                              141 => \%bbc_one_regs_ni, },
             'BBC One Northern Ireland'
-                      => { 141 => \%bbc_one_regs_ni, },
-            'BBC Two' => { 102 => \%bbc_two_regs,
-                           142 => \%bbc_two_regs_ni, },
+                         => { 141 => \%bbc_one_regs_ni, },
+            'BBC Two'    => { 102 => \%bbc_two_regs,
+                              142 => \%bbc_two_regs_ni, },
             'BBC Two Northern Ireland'
-                      => { 142 => \%bbc_two_regs_ni, },
-            'ITV'     => { 103 => \%itv_one_regs_satellite, },
-            'ITV1 +1' => { 112 => \%itv_one_plus_one_regs_sky, },
-            'ITV1 HD' => { 119 => \%itv_one_hd_regs_sky, },
+                         => { 142 => \%bbc_two_regs_ni, },
+            'ITV'        => { 103 => \%itv_one_regs_satellite, },
+            'BBC One HD' => { 108 => \%bbc_one_hd_regs, },
+            'BBC Two HD' => { 109 => \%bbc_two_hd_regs, },
+            'ITV1 +1'    => { 112 => \%itv_one_plus_one_regs_sky, },
+            'ITV1 HD'    => { 119 => \%itv_one_hd_regs_sky, },
         },
         'packages'          => {
         },
@@ -647,7 +681,6 @@ my %lineup_config = (
             'BBC Two' => {   2 => \%bbc_two_regs, },
             'ITV'     => {   3 => \%itv_one_regs, },
             'ITV +1'  => {  33 => \%itv_one_plus_one_regs_terrestrial, },
-            'ITV HD'  => { 103 => \%itv_one_hd_regs_terrestrial, },
         },
         'packages'          => {
         },
@@ -669,11 +702,13 @@ my %lineup_config = (
         'package-handler'   => \&get_filtered_freeviewhd_channels,
         'dvb-sid-map'       => 'freeview.map',
         'regional-handlers' => {
-            'BBC One' => {   1 => \%bbc_one_regs, },
-            'BBC Two' => {   2 => \%bbc_two_regs, },
-            'ITV'     => {   3 => \%itv_one_regs, },
-            'ITV +1'  => {  33 => \%itv_one_plus_one_regs_terrestrial, },
-            'ITV HD'  => { 103 => \%itv_one_hd_regs_terrestrial, },
+            'BBC One'    => {   1 => \%bbc_one_regs, },
+            'BBC Two'    => {   2 => \%bbc_two_regs, },
+            'ITV'        => {   3 => \%itv_one_regs, },
+            'ITV +1'     => {  33 => \%itv_one_plus_one_regs_terrestrial, },
+            'BBC One HD' => { 101 => \%bbc_one_hd_regs, },
+            'BBC Two HD' => { 102 => \%bbc_two_hd_regs, },
+            'ITV HD'     => { 103 => \%itv_one_hd_regs_terrestrial, },
         },
         'packages'          => {
         },
@@ -717,7 +752,6 @@ my %lineup_config = (
                                => { 142 => \%bbc_two_regs_ni, },
             'ITV'              => { 103 => \%itv_one_regs_satellite, },
             'ITV1 +1'          => { 131 => \%itv_one_plus_one_regs_sky, },
-            'ITV1 HD'          => { 178 => \%itv_one_hd_regs_sky, },
             'Setanta Ireland'  => { 423 => \%setanta_ireland_sky, },
             'Setanta Sports 1' => { 424 => \%setanta_sports_1_sky, },
         },
@@ -751,6 +785,8 @@ my %lineup_config = (
                                => { 142 => \%bbc_two_regs_ni, },
             'ITV'              => { 103 => \%itv_one_regs_satellite, },
             'ITV1 +1'          => { 131 => \%itv_one_plus_one_regs_sky, },
+            'BBC One HD'       => { 141 => \%bbc_one_hd_regs, },
+            'BBC Two HD'       => { 142 => \%bbc_two_hd_regs, },
             'ITV1 HD'          => { 178 => \%itv_one_hd_regs_sky, },
             'Setanta Ireland'  => { 423 => \%setanta_ireland_sky, },
             'Setanta Sports 1' => { 424 => \%setanta_sports_1_sky, },
@@ -817,7 +853,6 @@ my %lineup_config = (
             'BBC Two' => { 102 => \%bbc_two_regs, },
             'ITV'     => { 103 => \%itv_one_regs, },
             'ITV +1'  => { 114 => \%itv_one_plus_one_regs_virgin, },
-            'ITV HD'  => { 113 => \%itv_one_hd_regs_virgin, },
         },
         'channel-handlers'  => {
             'BBC One AD'   => { 851 => 'london.bbc1.bbc.co.uk'},
@@ -894,11 +929,13 @@ my %lineup_config = (
         'package-handler'   => \&get_filtered_virginhd_channels,
         'unique-packages'   => [ "M", "M+", "L", "XL", ],
         'regional-handlers' => {
-            'BBC One' => { 101 => \%bbc_one_regs, },
-            'BBC Two' => { 102 => \%bbc_two_regs, },
-            'ITV'     => { 103 => \%itv_one_regs, },
-            'ITV +1'  => { 114 => \%itv_one_plus_one_regs_virgin, },
-            'ITV HD'  => { 113 => \%itv_one_hd_regs_virgin, },
+            'BBC One'    => { 101 => \%bbc_one_regs, },
+            'BBC Two'    => { 102 => \%bbc_two_regs, },
+            'ITV'        => { 103 => \%itv_one_regs, },
+            'BBC One HD' => { 108 => \%bbc_one_hd_regs, },
+            'ITV +1'     => { 114 => \%itv_one_plus_one_regs_virgin, },
+            'ITV HD'     => { 113 => \%itv_one_hd_regs_virgin, },
+            'BBC Two HD' => { 187 => \%bbc_two_hd_regs, },
         },
         'channel-handlers'  => {
             'BBC One AD'   => { 851 => 'london.bbc1.bbc.co.uk'},
