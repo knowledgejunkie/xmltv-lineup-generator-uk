@@ -266,95 +266,95 @@ my %bbc_two_hd_regs = (
 
 my %itv_one_regs = (
     'wales.itv1.itv.co.uk' => {
-        'name' => 'ITV1 Wales',
-        'short-name' => 'ITV1',
+        'name' => 'ITV Wales',
+        'short-name' => 'ITV',
         'availability' => { 'country' => [ 'Wales' ], },
     },
     'u.tv' => {
         'name' => 'UTV',
-        'short-name' => 'ITV1',
+        'short-name' => 'ITV',
         'availability' => { 'country' => [ 'Northern Ireland' ], },
     },
     'anglia.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'anglia'} },
     },
     'border.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'border'} },
     },
     'central.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'central'} },
     },
     'channel.itv1.itv.co.uk' => {
-        'name' => 'ITV1 Channel Television',
-        'short-name' => 'ITV1',
+        'name' => 'ITV Channel Television',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'channel'} },
     },
     'granada.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'granada'} },
     },
     'london.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'london'} },
     },
     'meridian.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'meridian'} },
     },
     'scottish.border.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'scottish-border'} },
     },
     'central.stv.tv' => {
         'name' => 'STV Central',
-        'short-name' => 'ITV1',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'stv-central'} },
     },
     'north.stv.tv' => {
         'name' => 'STV North',
-        'short-name' => 'ITV1',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'stv-north'} },
     },
     'tynetees.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'tynetees'} },
     },
     'west.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'west'} },
     },
     'westcountry.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'westcountry'} },
     },
     'yorkshire.itv1.itv.co.uk' => {
-        'name' => 'ITV1',
-        'short-name' => 'ITV1',
+        'name' => 'ITV',
+        'short-name' => 'ITV',
         'availability' => { 'postcode' => $itv_one_postcode{'yorkshire'} },
     },
 );
 
 # Sky/Freesat
-# No separate ITV1 Border (Scottish) feed
+# No separate ITV Border (Scottish) feed
 my %itv_one_regs_satellite = %itv_one_regs;
 delete $itv_one_regs_satellite{'scottish.border.itv1.itv.co.uk'};
 delete $itv_one_regs_satellite{'border.itv1.itv.co.uk'};
 $itv_one_regs_satellite{'border.itv1.itv.co.uk'} = {
-    'name' => 'ITV1',
-    'short-name' => 'ITV1',
+    'name' => 'ITV',
+    'short-name' => 'ITV',
     'availability' => { 'postcode' => $itv_one_postcode{'border'} . ","
                                     . $itv_one_postcode{'scottish-border'} },
 },
@@ -363,69 +363,69 @@ $itv_one_regs_satellite{'border.itv1.itv.co.uk'} = {
 my %itv_one_plus_one_regs_terrestrial = (
     'tsod.plus-1.ni-macro.u.tv' => {
         'name' => 'UTV +1',
-        'short-name' => 'ITV1 +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'country' => [ 'Northern Ireland' ], },
     },
     'tsod.plus-1.wales.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1 Wales',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1 Wales',
+        'short-name' => 'ITV +1',
         'availability' => { 'country' => [ 'Wales' ], },
     },
     'tsod.plus-1.anglia.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'anglia'} },
     },
     'tsod.plus-1.central.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'central'} },
     },
     'tsod.plus-1.granada.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
                                         . $itv_one_postcode{'border'} . ","
                                         . $itv_one_postcode{'scottish-border'} },
     },
     'tsod.plus-1.london.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'london'} },
     },
     'tsod.plus-1.meridian.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'meridian'} },
     },
     'tsod.plus-1.central.stv.tv' => {
         'name' => 'STV +1',
-        'short-name' => 'ITV1 +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'stv-central'} },
     },
     'tsod.plus-1.north.stv.tv' => {
         'name' => 'STV +1',
-        'short-name' => 'ITV1 +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'stv-north'} },
     },
     'tsod.plus-1.tynetees.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'tynetees'} },
     },
     'tsod.plus-1.west.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'west'} },
     },
     'tsod.plus-1.westcountry.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'westcountry'} },
     },
     'tsod.plus-1.yorkshire.itv1.itv.co.uk' => {
-        'name' => 'ITV1 +1',
-        'short-name' => 'ITV1 +1',
+        'name' => 'ITV +1',
+        'short-name' => 'ITV +1',
         'availability' => { 'postcode' => $itv_one_postcode{'yorkshire'} },
     },
 );
@@ -435,7 +435,7 @@ my %itv_one_plus_one_regs_terrestrial = (
 my %itv_one_plus_one_regs_virgin = %itv_one_plus_one_regs_terrestrial;
 
 # Freesat
-# No UTV +1. No STV +1. No FTA ITV1 +1 Yorkshire
+# No UTV +1. No STV +1. No FTA ITV +1 Yorkshire
 my %itv_one_plus_one_regs_freesat = %itv_one_plus_one_regs_terrestrial;
 delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.ni-macro.u.tv'};
 delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.north.stv.tv'};
@@ -443,8 +443,8 @@ delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.central.stv.tv'};
 
 delete $itv_one_plus_one_regs_freesat{'tsod.plus-1.yorkshire.itv1.itv.co.uk'};
 $itv_one_plus_one_regs_freesat{'tsod.plus-1.granada.itv1.itv.co.uk'} = {
-    'name' => 'ITV1 +1',
-    'short-name' => 'ITV1 +1',
+    'name' => 'ITV +1',
+    'short-name' => 'ITV +1',
     'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
                                     . $itv_one_postcode{'border'} . ","
                                     . $itv_one_postcode{'scottish-border'} . ","
@@ -462,20 +462,20 @@ delete $itv_one_plus_one_regs_sky{'tsod.plus-1.central.stv.tv'};
 my %itv_one_hd_regs_terrestrial = (
     'hd.ni-macro.u.tv' => {
         'name' => 'UTV HD',
-        'short-name' => 'ITV1 HD',
+        'short-name' => 'ITV HD',
         'availability' => { 'country' => [ 'Northern Ireland' ], },
     },
     'hd.central-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
+        'name' => 'ITV HD',
+        'short-name' => 'ITV HD',
         'availability' => { 'postcode' => $itv_one_postcode{'central'} . ","
                                         . $itv_one_postcode{'west'} . ","
                                         . $itv_one_postcode{'westcountry'},
                             'country' => [ 'Wales' ], },
     },
     'hd.northwest-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
+        'name' => 'ITV HD',
+        'short-name' => 'ITV HD',
         'availability' => { 'postcode' => $itv_one_postcode{'granada'} . ","
                                         . $itv_one_postcode{'border'} . ","
                                         . $itv_one_postcode{'scottish-border'} . ","
@@ -483,19 +483,19 @@ my %itv_one_hd_regs_terrestrial = (
                                         . $itv_one_postcode{'tynetees'} },
     },
     'hd.london-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
+        'name' => 'ITV HD',
+        'short-name' => 'ITV HD',
         'availability' => { 'postcode' => $itv_one_postcode{'london'} },
     },
     'hd.southeast-macro.itv1.itv.co.uk' => {
-        'name' => 'ITV1 HD',
-        'short-name' => 'ITV1 HD',
+        'name' => 'ITV HD',
+        'short-name' => 'ITV HD',
         'availability' => { 'postcode' => $itv_one_postcode{'meridian'} . ","
                                         . $itv_one_postcode{'anglia'} },
     },
     'hd.scotland-macro.stv.tv' => {
         'name' => 'STV HD',
-        'short-name' => 'ITV1 HD',
+        'short-name' => 'ITV HD',
         'availability' => { 'postcode' => $itv_one_postcode{'stv-central'} . ","
                                         . $itv_one_postcode{'stv-north'} },
     },
@@ -591,7 +591,7 @@ my %lineup_config = (
             'BBC One' => { 101 => \%bbc_one_regs, },
             'BBC Two' => { 102 => \%bbc_two_regs, },
             'ITV'     => { 103 => \%itv_one_regs_satellite, },
-            'ITV1 +1' => { 112 => \%itv_one_plus_one_regs_freesat, },
+            'ITV +1'  => { 112 => \%itv_one_plus_one_regs_freesat, },
         },
         'packages'          => {
         },
@@ -619,8 +619,8 @@ my %lineup_config = (
             'ITV'        => { 103 => \%itv_one_regs_satellite, },
             'BBC One HD' => { 108 => \%bbc_one_hd_regs, },
             'BBC Two HD' => { 109 => \%bbc_two_hd_regs, },
-            'ITV1 +1'    => { 112 => \%itv_one_plus_one_regs_freesat, },
-            'ITV1 HD'    => { 119 => \%itv_one_hd_regs_freesat, },
+            'ITV +1'     => { 112 => \%itv_one_plus_one_regs_freesat, },
+            'ITV HD'     => { 119 => \%itv_one_hd_regs_freesat, },
         },
         'packages'          => {
         },
@@ -653,8 +653,8 @@ my %lineup_config = (
             'ITV'        => { 103 => \%itv_one_regs_satellite, },
             'BBC One HD' => { 108 => \%bbc_one_hd_regs, },
             'BBC Two HD' => { 109 => \%bbc_two_hd_regs, },
-            'ITV1 +1'    => { 112 => \%itv_one_plus_one_regs_sky, },
-            'ITV1 HD'    => { 119 => \%itv_one_hd_regs_sky, },
+            'ITV +1'     => { 112 => \%itv_one_plus_one_regs_sky, },
+            'ITV HD'     => { 119 => \%itv_one_hd_regs_sky, },
         },
         'packages'          => {
         },
@@ -751,7 +751,7 @@ my %lineup_config = (
             'BBC Two Northern Ireland'
                                => { 142 => \%bbc_two_regs_ni, },
             'ITV'              => { 103 => \%itv_one_regs_satellite, },
-            'ITV1 +1'          => { 131 => \%itv_one_plus_one_regs_sky, },
+            'ITV +1'           => { 131 => \%itv_one_plus_one_regs_sky, },
             'Setanta Ireland'  => { 423 => \%setanta_ireland_sky, },
             'Setanta Sports 1' => { 424 => \%setanta_sports_1_sky, },
         },
@@ -783,10 +783,10 @@ my %lineup_config = (
             'BBC Two Northern Ireland'
                                => { 142 => \%bbc_two_regs_ni, },
             'ITV'              => { 103 => \%itv_one_regs_satellite, },
-            'ITV1 +1'          => { 131 => \%itv_one_plus_one_regs_sky, },
+            'ITV +1'           => { 131 => \%itv_one_plus_one_regs_sky, },
             'BBC One HD'       => { 141 => \%bbc_one_hd_regs, },
             'BBC Two HD'       => { 142 => \%bbc_two_hd_regs, },
-            'ITV1 HD'          => { 178 => \%itv_one_hd_regs_sky, },
+            'ITV HD'           => { 178 => \%itv_one_hd_regs_sky, },
             'Setanta Ireland'  => { 423 => \%setanta_ireland_sky, },
             'Setanta Sports 1' => { 424 => \%setanta_sports_1_sky, },
         },
@@ -855,7 +855,7 @@ my %lineup_config = (
         'channel-handlers'  => {
             'BBC One AD'   => { 851 => 'london.bbc1.bbc.co.uk'},
             'BBC Two AD'   => { 852 => 'bbc2.bbc.co.uk'},
-            'ITV1 AD'      => { 853 => 'london.itv1.itv.co.uk'},
+            'ITV AD'       => { 853 => 'london.itv1.itv.co.uk'},
             'Channel 4 AD' => { 854 => 'channel4.com'},
             'Channel 5 AD' => { 855 => 'channel5.co.uk'},
             'S4C AD'       => { 856 => 's4c.co.uk'},
@@ -935,7 +935,7 @@ my %lineup_config = (
         'channel-handlers'  => {
             'BBC One AD'   => { 851 => 'london.bbc1.bbc.co.uk'},
             'BBC Two AD'   => { 852 => 'bbc2.bbc.co.uk'},
-            'ITV1 AD'      => { 853 => 'london.itv1.itv.co.uk'},
+            'ITV AD'       => { 853 => 'london.itv1.itv.co.uk'},
             'Channel 4 AD' => { 854 => 'channel4.com'},
             'Channel 5 AD' => { 855 => 'channel5.co.uk'},
             'S4C AD'       => { 856 => 's4c.co.uk'},
@@ -1703,7 +1703,6 @@ sub update_wp_channel_availability {
     return if ($channel_href->{'name'} =~ m/^BBC Two/i);
     return if ($channel_href->{'name'} =~ m/^ITV$/i);
     return if ($channel_href->{'name'} =~ m/^ITV (\+1|HD)$/i);
-    return if ($channel_href->{'name'} =~ m/^ITV1 (\+1|HD)$/i);
 
     print STDERR "Checking '$channel_href->{'name'}' for national/regional availability...\n" if $debug;
 
@@ -3212,7 +3211,7 @@ sub generate_xml_from_merged_data {
         $xml_station_href->{'name'} = { lang => "en-GB",
                                         _    => encode_utf8( $chan_href->{'name'} ),
                                       };
-        # For BBC1/2 and ITV1/+1/HD we update the channel short name in
+        # For BBC1/2 and ITV/+1/HD we update the channel short name in
         # replace_regional_channels() to be consistent across all regional
         # variants of these channels
         if (exists $chan_href->{'short-name'} && defined $chan_href->{'short-name'}) {
@@ -3573,12 +3572,12 @@ sub check_bbc_one_postcode_coverage {
     compare_postcode_hashrefs( $postcodes_for_england_href, $postcodes_to_broadcast_area_href );
 }
 
-# Checks the lists of postcodes assigned to ITV1 regions against the lists of
+# Checks the lists of postcodes assigned to ITV regions against the lists of
 # postcodes for England and Scotland (other ITV regions are nations-based).
 #
 sub check_itv_one_postcode_coverage {
 
-    print STDERR "Checking postcodes for ITV1 mappings against England/Scotland mappings...\n\n";
+    print STDERR "Checking postcodes for ITV mappings against England/Scotland mappings...\n\n";
 
     # The 'definitive' list of postcodes from WP
     my $wp_postcodes_href = shift;
