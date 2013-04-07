@@ -884,6 +884,7 @@ my %lineup_config = (
             'ESPN' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
             'ESPN America' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
             # Premium Channels
+            'MUTV' => { 'subscription' =>  [ 'Premium', ], },
             'Racing UK' => { 'subscription' =>  [ 'Premium', ], },
             'BoxNation' => { 'subscription' =>  [ 'Premium', ], },
             'BabyTV' => { 'subscription' =>  [ 'Premium', ], },
@@ -977,6 +978,7 @@ my %lineup_config = (
             'ESPN HD' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
             'ESPN America' => { 'basic' => [ 'XL', ], 'subscription' =>  [ 'ESPN', ], },
             # Premium Channels
+            'MUTV' => { 'subscription' =>  [ 'Premium', ], },
             'Racing UK' => { 'subscription' =>  [ 'Premium', ], },
             'BoxNation' => { 'subscription' =>  [ 'Premium', ], },
             'BabyTV' => { 'subscription' =>  [ 'Premium', ], },
