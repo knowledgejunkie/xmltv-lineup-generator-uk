@@ -1,0 +1,94 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use utf8;
+
+use XMLTV;
+use XMLTV::Get_nice qw(get_nice);
+$XMLTV::Get_nice::ua->parse_head(0);
+$XMLTV::Get_nice::FailOnError = 0;
+my $MAX_RETRY = 5; # max retries for XMLTV::Get_nice
+
+use Carp qw/croak/;
+use Encode qw(decode_utf8 encode_utf8);
+use HTML::Entities;
+use HTML::TreeBuilder;
+
+my $VIRGIN_URL = "http://store.virginmedia.com/digital-tv/channels/index.html";
+
+my $page = get_tree( $VIRGIN_URL );
+if (!defined $page) {
+    croak "Error: Could not retrieve channels page from Virgin";
+}
+
+my %virgin_channels;
+
+TABLE:
+foreach my $chan_div ( $page->look_down('_tag', 'div', 'class', qr/channelDetailsTable/) ) {
+
+    # process each channel entry in turn
+    CHANNEL:
+    foreach my $chan_row ( $chan_div->look_down('_tag', 'tr', 'class', qr/expandContent/) ) {
+
+        my %channel;
+
+        $channel{'num' } = $chan_row->look_down('_tag', 'div', 'class', qr/chanTTNumber/)->as_trimmed_text();
+        $channel{'name'} = $chan_row->look_down('_tag', 'div', 'class', qr/chanHeader/)->as_trimmed_text();
+        # default package M+
+        $channel{'package'} = 'M+';
+
+        my @packages = $chan_row->look_down('_tag', 'span', 'class', 'tick');
+        if (scalar @packages == 3) {
+                $channel{'package'} = 'M+';
+        }
+        elsif (scalar @packages == 2) {
+                $channel{'package'} = 'L';
+        }
+        elsif (scalar @packages == 1) {
+                $channel{'package'} = 'XL';
+        }
+
+        $virgin_channels{ $channel{'num'} } = \%channel;
+    }
+}
+$page->delete(); undef $page;
+
+my @sorted;
+
+foreach my $key (sort keys %virgin_channels) {
+    push @sorted, $virgin_channels{$key};
+}
+
+foreach my $chan (@sorted) {
+    printf "%5s %-32s %-5s\n",
+            $chan->{'num'},
+            $chan->{'name'},
+            $chan->{'package'};
+}
+print "\n";
+print scalar @sorted . " channels listed\n";
+print "\n";
+
+# Return an HTML::Tree from a given URL after decoding from UTF-8
+# and removing any HTML entities. Return undef if retrieval of URL
+# fails more than a configured number of times.
+#
+sub get_tree {
+    my $url = shift;
+    my $content;
+    my $nbretry = 0;
+    while (!defined($content = get_nice($url))) {
+        ++$nbretry;
+        return undef if $nbretry == $MAX_RETRY;
+        print STDERR "*** Retrying URL: '" . $url
+            . "' (attempt " . $nbretry . " of " . $MAX_RETRY . ") ***";
+    }
+
+    $content = decode_utf8($content);
+    decode_entities($content);
+    my $t = new HTML::TreeBuilder;
+    $t->parse($content) or croak "Cannot parse content of Tree\n";
+    $t->eof;
+    return $t;
+}
